@@ -1,0 +1,37 @@
+#! /bin/bash
+
+if [ -z "$BASH" ] || [ "$BASH" != "/bin/bash" ]
+then
+	cat >&2 <<EOF
+	extargsparse4sh only running in bash mode
+	please use bash to call this script
+EOF
+	exit 4
+fi
+
+read -r -d '' EXTARGSPARSE <<EXTEOF
+
+%EXTARGSPARSE%
+
+EXTEOF
+
+parse_command_line()
+{
+	local _jsonparse=$1
+    local _parsestr
+    local _vermode=""
+	shift
+
+    if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -gt 2 ]
+        then
+        echo "_jsonparse($_jsonparse) args($@)cnt($#) output($EXTARGSPARSE)" >&2
+        _vermode="-vvvv"
+    fi
+	_parsestr=$(echo "$_jsonparse" | python -c "$EXTARGSPARSE" $_vermode --caption "$0"  -- "$@" )
+    if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -gt 2 ]
+       then
+	   echo "_parsestr ($_parsestr)" >&2
+    fi
+	eval "$_parsestr"
+	return
+}
