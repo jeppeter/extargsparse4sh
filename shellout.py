@@ -1175,15 +1175,24 @@ class ExtArgsParse(argparse.ArgumentParser):
 
 
 
-    def __shell_eval_out_flagarray(self,args,flagarray,ismain=True):
+    def __shell_eval_out_flagarray(self,args,flagarray,ismain=True,curparser=None):
         s = ''
         for flag in flagarray:
             if flag.isflag and flag.flagname is not None:
                 if flag.type == 'args' or flag.type == 'list':
-                    if flag.flagname == '$':
-                        if ismain and self.__subparser is not None:
+                    if flag.flagname == '$' :
+                        if curparser is None and self.__subparser is not None:
                             continue
-                    s += 'declare -A %s\n'%(flag.varname)
+                        elif curparser is not None and curparser.typeclass.cmdname != args.subcommand:
+                            # we do not output args
+                            if flag.varname != 'subnargs':
+                                # to not declare this one
+                                s += 'unset %s\n'%(flag.varname)
+                                s += 'declare -A -g %s\n'%(flag.varname)
+                            continue
+                    # make the global variable access
+                    s += 'unset %s\n'%(flag.varname)
+                    s += 'declare -A -g %s\n'%(flag.varname)
                     if flag.flagname == '$':
                         if  not ismain:
                             value = getattr(args,'subnargs',None)
@@ -1194,13 +1203,16 @@ class ExtArgsParse(argparse.ArgumentParser):
                     if value is not None:
                         i = 0
                         for v in value:
-                            s += '%s[%d]=%s\n'%(flag.varname,i,v)
+                            if isinstance(v,str):
+                                s += '%s[%d]=\'%s\'\n'%(flag.varname,i,v)
+                            else:
+                                s += '%s[%d]=%s\n'%(flag.varname,i,v)
                             i += 1
                 else:
                     if ismain and flag.optdest == 'json' :
                         continue
-                    elif not ismain:
-                        finddest = '%s_json'%(args.subcommand)
+                    elif curparser is not None:
+                        finddest = '%s_json'%(curparser.typeclass.cmdname)
                         if flag.optdest == finddest:
                             continue
                     value = getattr(args,flag.optdest)
@@ -1210,7 +1222,10 @@ class ExtArgsParse(argparse.ArgumentParser):
                         else:
                             s += '%s=0\n'%(flag.varname)
                     else:
-                        s += '%s=%s\n'%(flag.varname,value)
+                        if flag.type == 'string' :
+                            s += '%s=\'%s\'\n'%(flag.varname,value)
+                        else:
+                            s += '%s=%s\n'%(flag.varname,value)
         return s
 
     def shell_eval_out(self,params=None,Context=None):
@@ -1234,7 +1249,8 @@ class ExtArgsParse(argparse.ArgumentParser):
                 s += '%s=%s\n'%(keycls.function,args.subcommand)
             else:
                 s += 'subcommand=%s\n'%(args.subcommand)
-            s += self.__shell_eval_out_flagarray(args,curparser.flags,False)
+            for curparser in self.__cmdparsers:
+                s += self.__shell_eval_out_flagarray(args,curparser.flags,False,curparser)
         self.__logger.info('shell_out\n%s'%(s))
         return s
 

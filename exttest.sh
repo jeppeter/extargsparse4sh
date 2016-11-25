@@ -122,7 +122,7 @@ function assert_arr_equal()
 	_mod=`expr $_cnt % 2`
 	if [ $_mod -ne 0 ]
 		then
-		ErrorExit 3 "input ($_aname) != ($_bname)" 1
+		ErrorExit 3 "input ($_aname) != ($_bname) _cnt($_cnt) ${_arr[@]}" 1
 	fi
 
 	_len=`expr $_cnt / 2`
@@ -163,7 +163,33 @@ EOF
 	assert_str_equal "$traceflaginner" "css"
 	assert_str_equal "$bootordercmdlineinner" "bootorder=cc"
 	assert_str_equal "$vdifile" "/tmp/win10.vdi"
-	#assert_arr_equal "${basedirarr[@]}" "vv"
+	assert_arr_equal "basedirarr" "inputarr" "${basedirarr[@]}" "vv"
+	return
+}
+
+function testcase_kernel_compile()
+{
+	default_versionname="newversion"
+	def_numjobs=4
+	read -r -d '' OPTIONS <<EOF
+	{
+		"reconfig|r##to specify reconfig##" : false,
+		"link|l<linkfiles>##to specify the linkfiles##" : "",
+		"verbose|v##to specify##to specify ##" :  "+",
+		"versionname|V##to specify the versionname for current default($default_versionname)##" : "$default_versionname",
+		"job|j<numjobs>##to specify the parallevel jobs current default($def_numjobs)##" : $def_numjobs,
+		"debug|d<debugmode>##to specify debug mode default(0)##" : false,
+		"clean|c<cleanmode>##to specify clean mode default(0)##" : false,
+		"\$<moduledirs>##to compile modules for specified directory##" : "*"
+	}
+EOF
+	parse_command_line "$OPTIONS" -vvv -V "debug1" -j 5 -dddd -r -l "/tmp/linkfile" "arch/x86"
+	assert_int_equal "$verbose" 3
+	assert_str_equal "$versionname" "debug1"
+	assert_int_equal "$numjobs" 5
+	assert_int_equal "$debugmode" 1
+	assert_str_equal "$linkfiles" "/tmp/linkfile"
+	assert_arr_equal "moduledirs" "inputarr" "${moduledirs[@]}" "arch/x86"
 	return
 }
 
