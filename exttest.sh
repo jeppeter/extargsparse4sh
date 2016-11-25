@@ -193,6 +193,52 @@ EOF
 	return
 }
 
+function testcase_qemu_compile()
+{
+	def_numjobs=4
+	read -r -d '' OPTIONS<<EOFMM
+		{
+			"reconfig|r##to specify reconfig default(0)##" : false,
+			"verbose|v" : "+",
+			"job|j<numjobs>##to specify the parallevel jobs current default($def_numjobs)##" : $def_numjobs,
+			"debug|d<debugmode>##to specify the debug mode##" : false,
+			"makedebug|m<makedebugmode>##to specify make running in debug mode##" : false,
+			"reserve|R<reservemode>##to specify not delete mediate file##" : false,
+			"\$<notusedarr>" : 0
+		}
+EOFMM
+	
+	parse_command_line "$OPTIONS" -vvvv -d -m -R 
+	assert_int_equal "$verbose" 4
+	assert_int_equal "$numjobs" 4
+	assert_int_equal "$debugmode" 1
+	assert_int_equal "$makedebugmode" 1
+	assert_int_equal "$reservemode" 1
+	assert_arr_equal "notusedarr" "inputarr" "${notusedarr[@]}"
+	return
+}
+
+function testcase_seabios_compile()
+{
+	def_numjobs=4
+	read -r -d '' OPTIONS<<EOFMM
+		{
+			"reconfig|r##to specify reconfig default(0)##" : false,
+			"verbose|v" : "+",
+			"job|j<numjobs>##to specify the parallevel jobs current default($def_numjobs)##" : $def_numjobs,
+			"debug|d<debugmode>##to specify the debug mode##" : false,
+			"\$<notusedarr>" : 0
+		}
+EOFMM
+	parse_command_line "$OPTIONS" -v -d -j 3
+	assert_int_equal "$verbose" 1
+	assert_int_equal "$reconfig" 0
+	assert_int_equal "$numjobs" 3
+	assert_int_equal "$debugmode" 1
+	assert_arr_equal "notusedarr" "inputarr" "${notusedarr[@]}"
+	return
+}
+
 
 function get_testcase_funcnames()
 {
