@@ -113,3 +113,13 @@ RDEP_LIST[0]=(cc)
 RDEPARGS total (1)
 RDEPARGS[0]=(bbs)
 ```
+
+## howto compile 
+> run in linux or macOS or cygwin 
+> type command 
+
+```shell
+make
+```
+
+> it will output extargsparse4sh
