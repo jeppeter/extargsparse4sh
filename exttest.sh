@@ -239,6 +239,23 @@ EOFMM
 	return
 }
 
+function testcase_zero_args()
+{
+	DEF_KERNELDIR=/lib/modules/`uname -r`
+	read -r -d '' OPTIONS<<EOFMM
+	{
+		"verbose|v<verbose>##verbose mode##" : "+",
+		"kernel|k<KERNELDIR>##specify kernel dir default($DEF_KERNELDIR)##" : "$DEF_KERNELDIR",
+		"$<DIRS>##[srcdir] [inst]##" : "*"
+	}
+EOFMM
+	parse_command_line "$OPTIONS"
+	assert_int_equal "$verbose" 0
+	assert_str_equal "$KERNELDIR" "$DEF_KERNELDIR"
+	assert_arr_equal "DIRS" "inputarr" "${DIRS[@]}"
+	return
+}
+
 
 function get_testcase_funcnames()
 {

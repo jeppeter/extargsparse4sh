@@ -1294,7 +1294,7 @@ def main():
         "catch|C## to not catch the exception ##" : true,
         "input|i## to specify input default(stdin)##" : null,
         "$caption## set caption ##" : "runcommand",
-        "$" : "+"
+        "$" : "*"
     }
     '''
     parser = ExtArgsParse()

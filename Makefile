@@ -13,11 +13,12 @@ extargsparse4sh:shellout.py extargsparse4sh.tmpl check
 	${QUIET}chmod +x extargsparse4sh
 
 check:checkcode shellout.py
-	${QUIET}bash checkcode >shellout2.py
-	${QUIET}cmp --quiet shellout2.py shellout.py ; _res=$$? ; if [ $$_res -ne 0 ] ; then echo "not make same" >&2 ; exit 3 ; fi
+	${QUIET}bash checkcode  | sed -e '/^$$/d' >shellout2.py
+	${QUIET}cat shellout.py | sed -e '/^$$/d' >shellout3.py
+	${QUIET}cmp --quiet shellout2.py shellout3.py ; _res=$$? ; if [ $$_res -ne 0 ] ; then echo "not make same" >&2 ; exit 3 ; fi
 
 checkcode:checkcode.tmpl
 	${QUIET}bash maketmpl shellout.py checkcode.tmpl checkcode
 
 clean:
-	${QUIET}rm -f extargsparse4sh checkcode shellout2.py
+	${QUIET}rm -f extargsparse4sh checkcode shellout2.py shellout3.py
