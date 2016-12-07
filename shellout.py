@@ -1254,6 +1254,217 @@ class ExtArgsParse(argparse.ArgumentParser):
         self.__logger.info('shell_out\n%s'%(s))
         return s
 
+
+class ExtArgsParser4shTest(unittest.TestCase):
+
+    def __has_line(self,sarr,s):
+        ok = False
+        for nl in sarr:
+            l = nl.rstrip('\r\n')
+            if s == l:
+                ok = True
+                break
+        return ok
+
+    def __line_prefix(self,sarr,s):
+        ok = False
+        for nl in sarr:
+            l = nl.rstrip('\r\n')
+            if l.startswith(s):
+                ok = True
+                break
+        return ok
+
+
+    def __check_value_common(self,s,key,value):
+        sarr = re.split('\n',s)
+        ok = self.__has_line(sarr,'%s=%s'%(key,value))
+        self.assertEqual(ok,True)
+        return
+    
+
+    def __check_value_list(self,s,key,value):
+        sarr = re.split('\n',s)
+        ok = self.__has_line(sarr,'declare -A -g %s'%(key))
+        self.assertEqual(ok,True)
+        ok = self.__has_line(sarr,'unset %s'%(key))
+        if len(value) == 0:
+            # now we should get the 
+            ok = self.__line_prefix(sarr,'%s[%d]='%(key,0))
+            self.assertEqual(ok,False)
+        else:
+            i = 0
+            for v in value:
+                ok = self.__has_line(sarr,'%s[%d]=\'%s\''%(key,i,v))
+                self.assertEqual(ok,True)
+                i += 1
+            ok = self.__line_prefix(sarr,'%s[%d]='%(key,i))
+            self.assertEqual(ok,False)
+        return
+
+    def __check_not_list(self,s,key):
+        sarr = re.split('\n',s)
+        ok = self.__has_line(sarr,'delcare -A %s'%(key))
+        self.assertEqual(ok,False)
+        return
+
+    def __check_not_common(self,s,key):
+        sarr = re.split('\n',s)
+        ok = self.__line_prefix(sarr,'%s='%(key))
+        self.assertEqual(ok,False)
+        return
+
+    def test_A022(self):
+        commandline= '''
+        {
+            "verbose|v" : "+",
+            "port|p" : 3000
+        }
+        '''
+        parser = ExtArgsParse()
+        parser.load_command_line_string(commandline)
+        s = parser.shell_eval_out(['-vvvv','-p','5000'])
+        self.__check_value_common(s,'port',5000)
+        self.__check_value_common(s,'verbose',4)
+        self.__check_value_list(s,'args',[])
+        self.__check_not_list(s,'subnargs')
+        self.__check_not_common(s,'subcommand')
+        self.__check_not_common(s,'json')
+        return
+
+    def test_A023(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000
+        }
+        '''
+        parser = ExtArgsParse()
+        parser.load_command_line_string(commandline)
+        s = parser.shell_eval_out(['-vvvv','-p','5000'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_list(s,'args',[])
+        self.__check_not_common(s,'json')
+        return
+
+    def test_A024(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep" : {
+                "http" : true,
+                "age"  : 50,
+                "$" : "+"
+            }
+        }
+        '''
+        parser = ExtArgsParse()
+        parser.load_command_line_string(commandline)
+        s = parser.shell_eval_out(['-vvvv','-p','5000','dep','cc','dd'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'subnargs',['cc','dd'])
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        return
+
+    def test_A025(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age"  : 50,
+                "$<depargs>" : "+"
+            }
+        }
+        '''
+        parser = ExtArgsParse()
+        parser.load_command_line_string(commandline)
+        s = parser.shell_eval_out(['-vvvv','-p','5000','dep','cc','dd'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'depargs',['cc','dd'])
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        return
+
+    def test_A026(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age"  : 50,
+                "$<depargs>" : "+"
+            },
+            "rdep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age" : 48,
+                "$<rdepargs>" : "+"
+            }
+        }
+        '''
+        parser = ExtArgsParse()
+        parser.load_command_line_string(commandline)
+        s = parser.shell_eval_out(['-vvvv','-p','5000','dep','cc','dd'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'depargs',['cc','dd'])
+        self.__check_value_list(s,'rdepargs',[])
+        self.__check_value_common(s,'rdep_http',1)
+        self.__check_value_common(s,'rdep_age',48)
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        self.__check_not_common(s,'rdep_json')
+        return
+
+
+    def test_A027(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age"  : 50,
+                "$<depargs>" : "+"
+            },
+            "rdep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age" : 48,
+                "$<rdepargs>" : "+"
+            }
+        }
+        '''
+        parser = ExtArgsParse()
+        parser.load_command_line_string(commandline)
+        s = parser.shell_eval_out(['-vvvv','-p','5000','dep','cc ee','dd'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'depargs',['cc ee','dd'])
+        self.__check_value_list(s,'rdepargs',[])
+        self.__check_value_common(s,'rdep_http',1)
+        self.__check_value_common(s,'rdep_age',48)
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        self.__check_not_common(s,'rdep_json')
+        return
+
+
+
 def set_log_level(args):
     loglvl= logging.ERROR
     if args.verbose >= 3:
