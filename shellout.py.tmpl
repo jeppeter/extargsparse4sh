@@ -1,0 +1,493 @@
+
+import os
+import sys
+import json
+import logging
+import re
+import importlib
+if sys.version[0] == '2':
+    import StringIO
+else:
+    import io as StringIO
+
+
+##importdebugstart not use modules
+def _reload_rtools_path(curpath):
+    _rtools_py = os.path.join(curpath,'rtools.py')
+    if os.path.exists(_rtools_py):
+        if curpath != sys.path[0]:
+            if curpath in sys.path:
+                sys.path.remove(curpath)
+            oldpath=sys.path
+            sys.path = [curpath]
+            sys.path.extend(oldpath)
+    return
+
+_reload_rtools_path(os.path.abspath(os.path.dirname(__file__)))
+_reload_rtools_path(os.path.abspath(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..','..')))
+import extargsparse
+import rtools
+import unittest
+import tempfile
+##importdebugend not use modules
+
+%EXTARGSPARSE_STRIP_CODE%
+
+
+def quote_string(s):
+    rets = ''
+    sb = 0
+    for c in s:
+        if c in [ '\'']:
+            if sb :
+                rets += c
+            else:
+                rets += '\\'
+                rets += c
+            sb = 0
+        elif c == '\\':
+            sb = 1
+            rets += '\\'
+        else:
+            sb = 0
+            rets += c
+    return rets
+
+
+def __shell_out_list(argopts,args,keycls,keyname=None,defval=None):
+    s = ''
+    s += 'unset %s\n'%(keycls.varname)
+    s += 'declare -A -g %s\n'%(keycls.varname)
+    i = 0
+    if keyname is None:
+        keyname = keycls.optdest
+    if defval is not None:
+        for c in defval:
+            s += '%s[%d]=\'%s\'\n'%(keycls.varname,i,c)
+            i += 1            
+    else:
+        for c in getattr(args,keyname):
+            s += '%s[%d]=\'%s\'\n'%(keycls.varname,i,c)
+            i += 1
+    return s
+
+def __shell_output_command(argopts,parser,args,cmdname=''):
+    s = ''
+    subcmds = parser.get_subcommands(cmdname)
+    if subcmds is not None:
+        for c in subcmds:
+            cname = '%s'%(cmdname)
+            if len(cname) > 0:
+                cname += '.'
+            cname += c
+            s += __shell_output_command(argopts,parser,args,cname)
+    opts = parser.get_cmdopts(cmdname)
+    if opts is not None:
+        for opt in opts:
+            if opt.type == 'args':
+                if (args.subcommand is not None and (cmdname is not None and args.subcommand == cmdname) ) or \
+                    (args.subcommand is None and ( cmdname is None or cmdname == '')):
+                    keyname = opt.varname
+                    defval = None
+                    if args.subcommand is not None:
+                        defval = args.subnargs
+                    else:
+                        defval =args.args
+                    s += __shell_out_list(argopts,args,opt,keyname,defval)
+                else:
+                    keyname = opt.varname
+                    if keyname != 'args' and keyname != 'subnargs':
+                        s += __shell_out_list(argopts,args,opt,keyname,[])
+                continue
+            elif opt.type == 'jsonfile' or opt.type == 'help':
+                continue
+
+            if opt.type == 'list':
+                s += __shell_out_list(argopts,args,opt)
+            elif opt.type == 'bool':
+                if getattr(args,opt.optdest,False):
+                    s += '%s=1\n'%(opt.varname)
+                else:
+                    s += '%s=0\n'%(opt.varname)
+            elif opt.type == 'string' or opt.type == 'unicode':
+                val = getattr(args,opt.optdest,None)
+                if val is not None:                    
+                    s += '%s=\'%s\'\n'%(opt.varname,quote_string(val))
+                else:
+                    s += '%s=\n'%(opt.varname)
+            elif opt.type == 'long' or opt.type == 'int' or opt.type == 'count' :
+                val = getattr(args,opt.optdest,0)
+                s += '%s=%s\n'%(opt.varname,val)
+            elif opt.type == 'float':
+                val = getattr(args,opt.optdest,0.0)
+                s += '%s=%s\n'%(opt.varname,val)
+            else:
+                logging.error('not known type (%s)'%(opt.type))
+    return s
+
+
+def bash_output(argopts,parser,args):
+    return __shell_output_command(argopts,parser,args)
+
+def format_bash_output(args,options,params=None):
+    s = ''
+    try:
+        extoptions = ExtArgsOptions()
+        extoptions.prog = args.caption
+        parser = ExtArgsParse(extoptions)
+        parser.load_command_line_string(options)
+        args = parser.parse_command_line(params,parser,'bash')
+        s += bash_output(args,parser,args)
+    except Exception as e:
+        s = 'cat <<EOFMM\n'
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        s += 'cat <<EOM\n%s:%s:%s\nEOM\n'%(exc_type,exc_value,exc_traceback)
+        s += 'exit 3;\n'
+    return s
+
+class debug_shellout_test_cases(unittest.TestCase):
+    def setUp(self):
+        keyname = '_%s__logger'%(self.__class__.__name__)
+        if getattr(self,keyname,None) is None:
+            self.__logger = _LoggerObject()
+            self.info('create logger')
+
+        if 'EXTARGSPARSE_JSON' in os.environ.keys():
+            del os.environ['EXTARGSPARSE_JSON']
+        delone = True
+        while delone:
+            delone = False
+            for k in os.environ.keys():
+                if k.startswith('EXTARGS_') or k.startswith('DEP_') or k == 'EXTARGSPARSE_JSON' or k.startswith('RDEP_'):
+                    del os.environ[k]
+                    delone = True
+                    break
+        return
+
+    def info(self,msg,callstack=1):
+        return self.__logger.info(msg,(callstack + 1))
+
+    def error(self,msg,callstack=1):
+        return self.__logger.error(msg,(callstack + 1))
+
+    def warn(self,msg,callstack=1):
+        return self.__logger.warn(msg,(callstack + 1))
+
+    def debug(self,msg,callstack=1):
+        return self.__logger.debug(msg,(callstack + 1))
+
+    def fatal(self,msg,callstack=1):
+        return self.__logger.fatal(msg,(callstack + 1))
+
+    def tearDown(self):
+        pass
+
+    @classmethod
+    def setUpClass(cls):
+        pass
+
+    @classmethod
+    def tearDownClass(cls):
+        pass
+
+
+    def __has_line(self,sarr,s):
+        ok = False
+        for nl in sarr:
+            l = nl.rstrip('\r\n')
+            if s == l:
+                ok = True
+                break
+        return ok
+
+    def __line_prefix(self,sarr,s):
+        ok = False
+        for nl in sarr:
+            l = nl.rstrip('\r\n')
+            if l.startswith(s):
+                ok = True
+                break
+        return ok
+
+    def __get_argsopt(self):
+        argsopt = NameSpace()
+        argsopt.caption = 'extargsparse4sh_test'
+        return argsopt
+
+    def __get_bash_output(self,options,params):
+        argsopt = self.__get_argsopt()
+        s = format_bash_output(argsopt,options,params)
+        return s
+
+
+    def __check_value_common(self,s,key,value):
+        sarr = re.split('\n',s)
+        ok = self.__has_line(sarr,'%s=%s'%(key,value))
+        self.assertEqual(ok,True)
+        return
+    
+
+    def __check_value_list(self,s,key,value):
+        sarr = re.split('\n',s)
+        ok = self.__has_line(sarr,'declare -A -g %s'%(key))
+        self.assertEqual(ok,True)
+        ok = self.__has_line(sarr,'unset %s'%(key))
+        self.assertEqual(ok,True)
+        if len(value) == 0:
+            # now we should get the 
+            ok = self.__line_prefix(sarr,'%s[%d]='%(key,0))
+            self.assertEqual(ok,False)
+        else:
+            i = 0
+            for v in value:
+                ok = self.__has_line(sarr,'%s[%d]=\'%s\''%(key,i,v))
+                self.assertEqual(ok,True)
+                i += 1
+            ok = self.__line_prefix(sarr,'%s[%d]='%(key,i))
+            self.assertEqual(ok,False)
+        return
+
+    def __check_not_list(self,s,key):
+        sarr = re.split('\n',s)
+        ok = self.__has_line(sarr,'delcare -A %s'%(key))
+        self.assertEqual(ok,False)
+        return
+
+    def __check_not_common(self,s,key):
+        sarr = re.split('\n',s)
+        ok = self.__line_prefix(sarr,'%s='%(key))
+        self.assertEqual(ok,False)
+        return
+
+    def test_A001(self):
+        commandline= '''
+        {
+            "verbose|v" : "+",
+            "port|p" : 3000
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000'])
+        self.__check_value_common(s,'port',5000)
+        self.__check_value_common(s,'verbose',4)
+        self.__check_value_list(s,'args',[])
+        self.__check_not_list(s,'subnargs')
+        self.__check_not_common(s,'subcommand')
+        self.__check_not_common(s,'json')
+        return
+
+    def test_A002(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_list(s,'args',[])
+        self.__check_not_common(s,'json')
+        return
+
+    def test_A003(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep" : {
+                "http" : true,
+                "age"  : 50,
+                "$" : "+"
+            }
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000','dep','cc','dd'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'subnargs',['cc','dd'])
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        return
+
+    def test_A004(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age"  : 50,
+                "$<depargs>" : "+"
+            }
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000','dep','cc','dd'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'depargs',['cc','dd'])
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        return
+
+    def test_A005(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age"  : 50,
+                "$<depargs>" : "+"
+            },
+            "rdep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age" : 48,
+                "$<rdepargs>" : "+"
+            }
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000','dep','cc','dd'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'depargs',['cc','dd'])
+        self.__check_value_list(s,'rdepargs',[])
+        self.__check_value_common(s,'rdep_http',1)
+        self.__check_value_common(s,'rdep_age',48)
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        self.__check_not_common(s,'rdep_json')
+        return
+
+
+    def test_A006(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age"  : 50,
+                "$<depargs>" : "+"
+            },
+            "rdep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age" : 48,
+                "$<rdepargs>" : "+"
+            }
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000','dep','cc ee','dd'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'depargs',['cc ee','dd'])
+        self.__check_value_list(s,'rdepargs',[])
+        self.__check_value_common(s,'rdep_http',1)
+        self.__check_value_common(s,'rdep_age',48)
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        self.__check_not_common(s,'rdep_json')
+        return
+
+
+
+def set_log_level(args):
+    loglvl= logging.ERROR
+    if args.verbose >= 3:
+        loglvl = logging.DEBUG
+    elif args.verbose >= 2:
+        loglvl = logging.INFO
+    elif args.verbose >= 1 :
+        loglvl = logging.WARN
+    # we delete old handlers ,and set new handler
+    logging.basicConfig(level=loglvl,format='%(asctime)s:%(filename)s:%(funcName)s:%(lineno)d\t%(message)s')
+    return
+
+def reset_extargs_logger(args):
+    os.environ['EXTARGSPARSE_LOGLEVEL']  = '%d'%(args.verbose)
+    logger = logging.getLogger('extargsparse')
+    logger.handlers = []
+    return
+
+def parse_inner(args):
+    reset_extargs_logger(args)
+    commandline = ''
+    fin = sys.stdin
+    if args.input is not None:
+        fin = open(args.input,'r+')
+    for l in fin:
+        commandline += l
+    if fin != sys.stdin:
+        fin.close()
+    fin = None
+    i=0
+    for a in args.args:
+        logging.info('[%d]=%s'%(i,a))
+        i += 1        
+    s = format_bash_output(args,options=commandline,params=args.args)
+    sys.stdout.write('%s'%(s))
+    return
+
+def cmd_change_test(args):
+    reset_extargs_logger(args)
+    if args.verbose >=1 and ('-v' not in args.args and '--verbose' not in args.args):
+        args.args.append('-v')
+    sys.argv[1:]=args.args
+    unittest.main()
+    return
+
+
+
+def cmd_change_release(args):
+    excludes=[r'^debug_.*']
+    macros = [[r'^##importdebugstart.*',r'^##importdebugend.*']]
+    cmdchanges=[r'cmd_change_.*']
+    repls = dict()
+    rtools.release_file('__main__',None,excludes,macros,cmdchanges,repls,None,None)
+    return
+
+
+def main():
+    inner_command='''
+    {
+        "verbose|v" : "+",
+        "catch|C## to not catch the exception ##" : true,
+        "input|i## to specify input default(stdin)##" : null,
+        "$caption## set caption ##" : "runcommand",
+        "test|t##to test mode##" : false,
+        "release|R##to release test mode##" : false,
+        "$" : "*"
+    }
+    '''
+    parser = ExtArgsParse()
+    parser.load_command_line_string(inner_command)
+    args = parser.parse_command_line()
+    set_log_level(args)
+    if args.test:
+        cmd_change_test(args)
+    elif args.release:
+        cmd_change_release(args)
+    else:
+        if args.catch:
+            try:
+                parse_inner(args)
+            except Exception as e:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                frame = sys._getframe(1)
+                debuginfo = '[%-10s:%-20s:%-5s] '%(frame.f_code.co_filename,frame.f_code.co_name,frame.f_lineno)
+                sys.stdout.write('cat <<EOM\n%s\t %s:%s:%s\nEOM\n'%(debuginfo,exc_type,exc_value,exc_traceback))
+                sys.stdout.write('exit 3')
+                sys.exit(3)
+        else:
+            parse_inner(args)
+    return
+
+if __name__ == '__main__':
+    main()
