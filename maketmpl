@@ -1,5 +1,8 @@
 #! /bin/bash
 
+_script_file=`readlink -f $0`
+script_dir=`dirname $_script_file`
+
 templatefile="$1"
 inputfile="$2"
 outputfile="$3"
@@ -20,6 +23,7 @@ tmpfile=`mktemp`
 # first to input the value
 cat "$templatefile" | sed 's/\\\\/%double_slash%/g' | sed 's/\\$/%endslash%/g' | sed 's/"\$/%quotedollar%/g'  | sed 's/\\\$/%dollarslash%/g' | sed 's/\\n/%newline%/g' | sed 's/\\/\\\\/g' | sed 's/\&/%specialcase%/g' > $tmpfile
 replaceval=$(cat "$tmpfile" )
-awk -v replacekey='%EXTARGSPARSE%' -v replacevalue="$replaceval" "$AWK_REPL_STR" "$inputfile"  | sed 's/%newline%/\\n/g' |   sed 's/%endslash%/\\\\/g' |  sed 's/%dollarslash%/\\\\\\\$/g' | sed 's/%specialcase%/\&/g' | sed 's/%quotedollar%/"\\\$/g' | sed 's/%double_slash%/\\\\\\\\/g' >"$outputfile"
+extargsversion=$(cat "$script_dir/VERSION")
+awk -v replacekey='%EXTARGSPARSE%' -v replacevalue="$replaceval" "$AWK_REPL_STR" "$inputfile"  | awk -v replacekey='%EXTARGSPARSE4SH_VERSION%' -v replacevalue="$extargsversion"  "$AWK_REPL_STR" | sed 's/%newline%/\\n/g' |   sed 's/%endslash%/\\\\/g' |  sed 's/%dollarslash%/\\\\\\\$/g' | sed 's/%specialcase%/\&/g' | sed 's/%quotedollar%/"\\\$/g' | sed 's/%double_slash%/\\\\\\\\/g' >"$outputfile"
 rm -f "$tmpfile"
 #echo "tmpfile ($tmpfile)" >&2

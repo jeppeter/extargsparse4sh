@@ -46,9 +46,38 @@ def set_log_level(args):
     logging.basicConfig(level=loglvl,format='%(asctime)s:%(filename)s:%(funcName)s:%(lineno)d\t%(message)s')
     return
 
+def get_ver_tuple(ver):
+	sarr = re.split('\.',ver)
+	i = 0
+	while i < len(sarr):
+		sarr[i] = int(sarr[i])
+		i += 1
+	return sarr
+
+def check_version(verleast):
+	try:
+		vernum = extargsparse.__version__
+		vertuple = get_ver_tuple(vernum)
+		leasttuple = get_ver_tuple(verleast)
+		ok = True
+		if vertuple[0] < leasttuple[0]:
+			ok = False
+		elif vertuple[0] == leasttuple[0]:
+			if vertuple[1] < leasttuple[1]:
+				ok = False
+			elif vertuple[1] == leasttuple[1]:
+				if vertuple[2] < leasttuple[2]:
+					ok = False				
+		if not ok :
+			raise Exception('version %s < %s'%(vernum,verleast))
+	except:
+		raise Exception('must at lease %s version of extargsparse'%(verleast))
+	return
+
 def output_handler(args):
 	# now to get the file string
 	s = ''
+	check_version('0.5.8')
 	excludes = args.excludes
 	macros = []
 	for m in args.macro:

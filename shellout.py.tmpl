@@ -38,7 +38,7 @@ def quote_string(s):
     rets = ''
     sb = 0
     for c in s:
-        if c in [ '\'']:
+        if c in [ '"']:
             if sb :
                 rets += c
             else:
@@ -63,11 +63,11 @@ def __shell_out_list(argopts,args,keycls,keyname=None,defval=None):
         keyname = keycls.optdest
     if defval is not None:
         for c in defval:
-            s += '%s[%d]=\'%s\'\n'%(keycls.varname,i,c)
+            s += '%s[%d]="%s"\n'%(keycls.varname,i,quote_string(c))
             i += 1            
     else:
         for c in getattr(args,keyname):
-            s += '%s[%d]=\'%s\'\n'%(keycls.varname,i,c)
+            s += '%s[%d]="%s"\n'%(keycls.varname,i,quote_string(c))
             i += 1
     return s
 
@@ -112,7 +112,7 @@ def __shell_output_command(argopts,parser,args,cmdname=''):
             elif opt.type == 'string' or opt.type == 'unicode':
                 val = getattr(args,opt.optdest,None)
                 if val is not None:                    
-                    s += '%s=\'%s\'\n'%(opt.varname,quote_string(val))
+                    s += '%s="%s"\n'%(opt.varname,quote_string(val))
                 else:
                     s += '%s=\n'%(opt.varname)
             elif opt.type == 'long' or opt.type == 'int' or opt.type == 'count' :
@@ -240,7 +240,7 @@ class debug_shellout_test_cases(unittest.TestCase):
         else:
             i = 0
             for v in value:
-                ok = self.__has_line(sarr,'%s[%d]=\'%s\''%(key,i,v))
+                ok = self.__has_line(sarr,'%s[%d]="%s"'%(key,i,quote_string(v)))
                 self.assertEqual(ok,True)
                 i += 1
             ok = self.__line_prefix(sarr,'%s[%d]='%(key,i))
@@ -396,6 +396,37 @@ class debug_shellout_test_cases(unittest.TestCase):
         self.__check_not_common(s,'rdep_json')
         return
 
+    def test_A007(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age"  : 50,
+                "$<depargs>" : "+"
+            },
+            "rdep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age" : 48,
+                "$<rdepargs>" : "+"
+            }
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000','dep','cc ee','\'dd\'','"ff cc"'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'depargs',['cc ee','\'dd\'','"ff cc"'])
+        self.__check_value_list(s,'rdepargs',[])
+        self.__check_value_common(s,'rdep_http',1)
+        self.__check_value_common(s,'rdep_age',48)
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        self.__check_not_common(s,'rdep_json')
+        return
+
 
 
 def set_log_level(args):
@@ -440,6 +471,7 @@ def cmd_change_test(args):
     if args.verbose >=1 and ('-v' not in args.args and '--verbose' not in args.args):
         args.args.append('-v')
     sys.argv[1:]=args.args
+    logging.error('args %s'%(sys.argv[1:]))
     unittest.main()
     return
 
@@ -471,6 +503,7 @@ def main():
     args = parser.parse_command_line()
     set_log_level(args)
     if args.test:
+        logging.error('call test')
         cmd_change_test(args)
     elif args.release:
         cmd_change_release(args)
