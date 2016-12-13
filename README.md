@@ -1,6 +1,9 @@
 # extargsparse4sh
 > [extargsparse](https://github.com/jeppeter/extargsparse) transport for bash
 
+### Release History
+* Nov 13th 2016 Release 0.2.0 to make compatible with quote string like "\"variable\""
+
 ## simple example
 
 ```bash

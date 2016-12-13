@@ -4,8 +4,30 @@ _scriptfile=`readlink -f $0`
 scriptdir=`dirname $_scriptfile`
 test_verbose=0
 EXTARGSPARSE_LOGLEVEL=0
+DEBUG_LEVEL=2
+INFO_LEVEL=1
 
 source $scriptdir/extargsparse4sh
+
+function __Debug()
+{
+	local _fmt=$1
+	shift
+	local _backstack=0
+	if [ $# -gt 0 ]
+		then
+		_backstack=$1
+	fi
+	
+	_fmtstr=""
+	if [ $test_verbose -gt 2 ]
+		then
+		_fmtstr="${BASH_SOURCE[$_backstack]}:${BASH_LINENO[$_backstack]} "
+	fi
+
+	_fmtstr="$_fmtstr$_fmt"
+	echo -e "$_fmtstr" >&2
+}
 
 function Debug()
 {
@@ -14,22 +36,36 @@ function Debug()
 	local _backstack=0
 	if [ $# -gt 0 ]
 		then
-		_backstack=$1	
+		_backstack=$1
 	fi
+	_backstack=`expr $_backstack \+ 1`
 	
-	if [ $test_verbose -gt 0 ]	
+	if [ $test_verbose -ge $DEBUG_LEVEL ]	
 		then
-		_fmtstr=""
-		if [ $test_verbose -gt 2 ]
-			then
-			_fmtstr="${BASH_SOURCE[$_backstack]}:${BASH_LINENO[$_backstack]} "
-		fi
-
-		_fmtstr="$_fmtstr$_fmt"
-		echo -e "$_fmtstr" >&2
+		__Debug "$_fmt" "$_backstack"
 	fi
 	return
 }
+
+function Info()
+{
+	local _fmt=$1
+	shift
+	local _backstack=0
+	if [ $# -gt 0 ]
+		then
+		_backstack=$1
+	fi
+	_backstack=`expr $_backstack \+ 1`
+	
+	if [ $test_verbose -ge $INFO_LEVEL ]
+		then
+		__Debug "$_fmt" "$_backstack"
+	fi
+	return
+}
+
+
 
 function ErrorExit()
 {
@@ -51,37 +87,176 @@ function ErrorExit()
 	exit $_ec
 }
 
-function assert()
+__check_in_list()
 {
-	local _assval="$1"
-	local _backstack=0
-	if [ $# -gt 1 ]
-		then
-		_backstack=$2
-	fi
-	_backstack=`expr $_backstack \+ 1`
+    local _chkitem="$1"
+    shift
+    local _curitem
+    local _i
+    _i=0
+    for _curitem in "$@"
+    do
+        if [ "$_chkitem" = "$_curitem" ]
+          then
+          return $_i
+        fi
+        _i=`expr $_i \+ 1`
+    done
+    return -1
+}
 
-	if [ ! $_assval ] ; then
-		Debug "assert ($_assval) failed" $_backstack
-		exit 3
-	else
-		Debug "assert ($_assval) succ" $_backstack
-	fi
-	return
+__check_file_operator()
+{
+  local _operator="$1"
+  local _res
+  __check_in_list "$_operator" "-a" "-b" "-c" "-d" "-e" "-f" "-g" "-h" "-k" "-p" "-r" "-s" "-t" "-u" "-w" "-x" "-G" "-L" "-N" "-O" "-S" "-o" "-v" "-R" "-z" "-n"
+  _res=$?
+  return $_res
+}
+
+
+__assert ()
+{
+  local _res
+  local _callnum=1
+  local _nextnum
+  local _expr1
+  local _expr2
+  local _expr3
+  local _expr4
+  local _resstr
+  __check_file_operator "$2" 
+  _res=$?
+  if [ $_res -eq 255 ]
+    then
+      if [ $# -lt 4 ]
+        then
+        ErrorExit 3 "$@ not valid"
+      fi
+      if [ $# -gt 4 ]
+        then
+        _callnum="$5"
+      fi
+
+      if [ "$2" "$3" "$4" ]
+        then
+        _resstr="true"
+      else
+        _resstr="false"
+      fi
+  else
+     if [ $# -lt 3 ]
+      then
+      ErrorExit 3 "$@ not valid"
+    fi
+    if [ $# -gt 3 ]
+      then
+      _callnum="$4"
+    fi
+
+    if [ "$2" "$3" ]
+      then
+      _resstr="true"
+    else
+      _resstr="false"
+    fi
+  fi
+
+  if [ "$_resstr" != "$1" ]
+    then  
+    _nextnum=`expr $_callnum \+ 1`
+    ErrorExit 3 "assert ($*) failed" $_nextnum
+  fi
+
+
+}
+
+
+assert() {
+  local _expr1="$1"
+  local _expr2="$2"
+  local _expr3="$3"
+  local _expr4="$4"
+  local _callnum=1
+  local _nextnum
+  local _res
+  __check_file_operator "$1" 
+  _res=$?
+  if [ $_res -eq 255 ]
+    then
+    if [ $# -lt 3 ]
+      then
+      ErrorExit 3 "can not accept($*)"
+    fi
+    if [ -n "$_expr4" ]
+      then
+      _callnum="$_expr4"
+    fi
+    _nextnum=`expr $_callnum \+ 1`
+    __assert "true" "$_expr1" "$_expr2" "$_expr3" $_nextnum
+    Debug "assert ( $_expr1 $_expr2 $_expr3 ) succ"
+  else
+      if [ $# -lt 2 ]
+        then
+        ErrorExit 3 "can not accept($*)"
+      fi
+    if [ -n "$_expr3" ]
+      then
+      _callnum="$_expr3"
+    fi
+    _nextnum=`expr $_callnum \+ 1`
+    __assert "true" "$_expr1" "$_expr2" $_nextnum
+    Debug "assert ($_expr1 $_expr2) succ"
+  fi
+}
+
+assert_fail() {
+  local _expr1="$1"
+  local _expr2="$2"
+  local _expr3="$3"
+  local _expr4="$4"
+  local _callnum=1
+  local _nextnum
+  local _res
+  __check_file_operator "$1" 
+  _res=$?
+  if [ $_res -eq 255 ]
+    then
+    if [ $# -lt 3 ]
+      then
+      ErrorExit 3 "can not accept($*)"
+    fi
+    if [ -n "$_expr4" ]
+      then
+      _callnum="$_expr4"
+    fi
+    _nextnum=`expr $_callnum \+ 1`
+    __assert "false" "$_expr1" "$_expr2" "$_expr3" $_nextnum
+  else
+      if [ $# -lt 2 ]
+        then
+        ErrorExit 3 "can not accept($*)"
+      fi
+    if [ -n "$_expr3" ]
+      then
+      _callnum="$_expr3"
+    fi
+    _nextnum=`expr $_callnum \+ 1`
+    __assert "false" "$_expr1" "$_expr2" $_nextnum
+  fi
 }
 
 function assert_int_equal()
 {
 	local _a="$1"
 	local _b="$2"
-	local _ass=" $_a -eq $_b "
 	local _backstack=0
 	if [ $# -gt 2 ]
 		then
 		_backstack=$3
 	fi
 	_backstack=`expr $_backstack \+ 1`
-	assert "$_ass" $_backstack
+	assert "$_a" -eq "$_b" $_backstack
 	return
 }
 
@@ -89,14 +264,13 @@ function assert_str_equal()
 {
 	local _a="$1"
 	local _b="$2"
-	local _ass=" \"$_a\" = \"$_b\" "
 	local _backstack=0
 	if [ $# -gt 2 ]
 		then
 		_backstack=$3
 	fi
 	_backstack=`expr $_backstack \+ 1`
-	assert "$_ass" $_backstack
+	assert "$_a" = "$_b" $_backstack
 	return
 }
 
@@ -239,6 +413,34 @@ EOFMM
 	return
 }
 
+function testcase_quote_commandline()
+{
+	default_versionname="newversion"
+	def_numjobs=4
+	read -r -d '' OPTIONS <<EOF
+	{
+		"reconfig|r##to specify reconfig##" : false,
+		"link|l<linkfiles>##to specify the linkfiles##" : "",
+		"verbose|v##to specify##to specify ##" :  "+",
+		"versionname|V##to specify the versionname for current default($default_versionname)##" : "$default_versionname",
+		"job|j<numjobs>##to specify the parallevel jobs current default($def_numjobs)##" : $def_numjobs,
+		"debug|d<debugmode>##to specify debug mode default(0)##" : false,
+		"clean|c<cleanmode>##to specify clean mode default(0)##" : false,
+		"\$<moduledirs>##to compile modules for specified directory##" : "*"
+	}
+EOF
+	parse_command_line "$OPTIONS" -vvv -V "debug1" -j 5 -dddd -r -l "/tmp/linkfile" "'arch/x86'" "\"cc dd\""
+	assert_int_equal "$verbose" 3
+	assert_str_equal "$versionname" "debug1"
+	assert_int_equal "$numjobs" 5
+	assert_int_equal "$debugmode" 1
+	assert_str_equal "$linkfiles" "/tmp/linkfile"
+	assert_arr_equal "moduledirs" "inputarr" "${moduledirs[@]}" "'arch/x86'" "\"cc dd\""
+	return
+	return
+
+}
+
 function testcase_zero_args()
 {
 	DEF_KERNELDIR=/lib/modules/`uname -r`
@@ -253,6 +455,14 @@ EOFMM
 	assert_int_equal "$verbose" 0
 	assert_str_equal "$KERNELDIR" "$DEF_KERNELDIR"
 	assert_arr_equal "DIRS" "inputarr" "${DIRS[@]}"
+	return
+}
+
+function testcase_extargs_version()
+{
+	fileversion=$(cat "$scriptdir/VERSION")
+	echoversion=$(extargsparse4sh_version)
+	assert_str_equal "$fileversion" "$echoversion"
 	return
 }
 
@@ -358,6 +568,7 @@ if [ $# -ne 0 ]
 			if [ "$cmpnames" = "$funcname" ]
 				then
 				founded=1
+				Info "$funcname"
 				eval "$funcname"
 				break
 			fi
@@ -370,6 +581,7 @@ if [ $# -ne 0 ]
 else
 	for funcname in $(get_testcase_funcnames)
 	do
+		Info "$funcname"
 		eval "$funcname"
 	done
 fi
