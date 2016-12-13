@@ -471,7 +471,6 @@ def cmd_change_test(args):
     if args.verbose >=1 and ('-v' not in args.args and '--verbose' not in args.args):
         args.args.append('-v')
     sys.argv[1:]=args.args
-    logging.error('args %s'%(sys.argv[1:]))
     unittest.main()
     return
 
@@ -503,7 +502,6 @@ def main():
     args = parser.parse_command_line()
     set_log_level(args)
     if args.test:
-        logging.error('call test')
         cmd_change_test(args)
     elif args.release:
         cmd_change_release(args)
