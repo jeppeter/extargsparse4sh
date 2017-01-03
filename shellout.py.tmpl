@@ -71,16 +71,8 @@ def __shell_out_list(argopts,args,keycls,keyname=None,defval=None):
             i += 1
     return s
 
-def __shell_output_command(argopts,parser,args,cmdname=''):
+def __shell_output_command_inner(argopts,parser,args,cmdname=''):
     s = ''
-    subcmds = parser.get_subcommands(cmdname)
-    if subcmds is not None:
-        for c in subcmds:
-            cname = '%s'%(cmdname)
-            if len(cname) > 0:
-                cname += '.'
-            cname += c
-            s += __shell_output_command(argopts,parser,args,cname)
     opts = parser.get_cmdopts(cmdname)
     if opts is not None:
         for opt in opts:
@@ -93,41 +85,94 @@ def __shell_output_command(argopts,parser,args,cmdname=''):
                         defval = args.subnargs
                     else:
                         defval =args.args
-                    s += __shell_out_list(argopts,args,opt,keyname,defval)
+                    if keyname not in argopts.hasoutput:
+                        s += __shell_out_list(argopts,args,opt,keyname,defval)
+                        argopts.hasoutput.append(keyname)
                 else:
                     keyname = opt.varname
-                    if keyname != 'args' and keyname != 'subnargs':
+                    if keyname != 'args' and keyname != 'subnargs' and keyname not in argopts.hasoutput:
                         s += __shell_out_list(argopts,args,opt,keyname,[])
+                        argopts.hasoutput.append(keyname)
                 continue
             elif opt.type == 'jsonfile' or opt.type == 'help':
                 continue
 
             if opt.type == 'list':
-                s += __shell_out_list(argopts,args,opt)
+                if opt.varname not in argopts.hasoutput:
+                    s += __shell_out_list(argopts,args,opt)
+                    argopts.hasoutput.append(opt.varname)
             elif opt.type == 'bool':
-                if getattr(args,opt.optdest,False):
-                    s += '%s=1\n'%(opt.varname)
-                else:
-                    s += '%s=0\n'%(opt.varname)
+                if opt.varname not in argopts.hasoutput:
+                    s += 'unset %s\n'%(opt.varname)
+                    s += 'declare -g %s\n'%(opt.varname)
+                    if getattr(args,opt.optdest,False):
+                        s += '%s=1\n'%(opt.varname)
+                    else:
+                        s += '%s=0\n'%(opt.varname)
+                    argopts.hasoutput.append(opt.varname)
             elif opt.type == 'string' or opt.type == 'unicode':
-                val = getattr(args,opt.optdest,None)
-                if val is not None:                    
-                    s += '%s="%s"\n'%(opt.varname,quote_string(val))
-                else:
-                    s += '%s=\n'%(opt.varname)
+                if opt.varname not in argopts.hasoutput:
+                    s += 'unset %s\n'%(opt.varname)
+                    s += 'declare -g %s\n'%(opt.varname)
+                    val = getattr(args,opt.optdest,None)
+                    if val is not None:                    
+                        s += '%s="%s"\n'%(opt.varname,quote_string(val))
+                    else:
+                        s += '%s=\n'%(opt.varname)
+                    argopts.hasoutput.append(opt.varname)
             elif opt.type == 'long' or opt.type == 'int' or opt.type == 'count' :
-                val = getattr(args,opt.optdest,0)
-                s += '%s=%s\n'%(opt.varname,val)
+                if opt.varname not in argopts.hasoutput:
+                    s += 'unset %s\n'%(opt.varname)
+                    s += 'declare -g %s\n'%(opt.varname)
+                    val = getattr(args,opt.optdest,0)
+                    s += '%s=%s\n'%(opt.varname,val)
+                    argopts.hasoutput.append(opt.varname)
             elif opt.type == 'float':
-                val = getattr(args,opt.optdest,0.0)
-                s += '%s=%s\n'%(opt.varname,val)
+                if opt.varname not in argopts.hasoutput:
+                    s += 'unset %s\n'%(opt.varname)
+                    s += 'declare -g %s\n'%(opt.varname)
+                    val = getattr(args,opt.optdest,0.0)
+                    s += '%s=%s\n'%(opt.varname,val)
+                    argopts.hasoutput.append(opt.varname)
             else:
                 logging.error('not known type (%s)'%(opt.type))
     return s
 
+def __shell_output_command(argopts,parser,args,cmdname=''):
+    s = ''
+    subcmds = parser.get_subcommands(cmdname)
+    if subcmds is not None:
+        for c in subcmds:
+            cname = '%s'%(cmdname)
+            if len(cname) > 0:
+                cname += '.'
+            cname += c
+            s += __shell_output_command(argopts,parser,args,cname)
+    s += __shell_output_command_inner(argopts,parser,args,cmdname)
+    return s
+
 
 def bash_output(argopts,parser,args):
-    return __shell_output_command(argopts,parser,args)
+    s = ''
+    argopts.hasoutput= []
+    if args.subcommand is not None and len(args.subcommand) > 0:
+        keycls = parser.get_cmdkey(args.subcommand)
+        if keycls.function is not None:
+            s += 'unset %s\n'%(keycls.function)
+            s += 'declare -g %s\n'%(keycls.function)
+            s += '%s=%s\n'%(keycls.function,args.subcommand)
+            argopts.hasoutput.append(keycls.function)
+        # to declare the subcommand ok
+        sarr = re.split('\.',args.subcommand)
+        i = len(sarr)
+        while i > 0:
+            # to give the command line
+            newname = '.'.join(sarr[:i])
+            s += __shell_output_command_inner(argopts,parser,args,newname)
+            i -= 1            
+    s +=  __shell_output_command(argopts,parser,args)
+    logging.info('output (%s)'%(s))
+    return s
 
 def format_bash_output(args,options,params=None):
     s = ''
@@ -145,7 +190,7 @@ def format_bash_output(args,options,params=None):
         s += 'exit 3;\n'
     return s
 
-class debug_shellout_test_cases(unittest.TestCase):
+class debug_shellouttest_cases(unittest.TestCase):
     def setUp(self):
         keyname = '_%s__logger'%(self.__class__.__name__)
         if getattr(self,keyname,None) is None:
@@ -222,6 +267,10 @@ class debug_shellout_test_cases(unittest.TestCase):
 
     def __check_value_common(self,s,key,value):
         sarr = re.split('\n',s)
+        ok = self.__has_line(sarr,'unset %s'%(key))
+        self.assertEqual(ok,True)
+        ok = self.__has_line(sarr,'declare -g %s'%(key))
+        self.assertEqual(ok,True)
         ok = self.__has_line(sarr,'%s=%s'%(key,value))
         self.assertEqual(ok,True)
         return
@@ -359,6 +408,7 @@ class debug_shellout_test_cases(unittest.TestCase):
         self.__check_value_list(s,'rdepargs',[])
         self.__check_value_common(s,'rdep_http',1)
         self.__check_value_common(s,'rdep_age',48)
+        self.__check_value_common(s,'CHOICECOMMAND','dep')
         self.__check_not_common(s,'json')
         self.__check_not_common(s,'dep_json')
         self.__check_not_common(s,'rdep_json')
@@ -422,12 +472,94 @@ class debug_shellout_test_cases(unittest.TestCase):
         self.__check_value_list(s,'rdepargs',[])
         self.__check_value_common(s,'rdep_http',1)
         self.__check_value_common(s,'rdep_age',48)
+        self.__check_value_common(s,'CHOICECOMMAND','dep')
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        self.__check_not_common(s,'rdep_json')
+        return
+
+    def test_A008(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age"  : 50,
+                "$<packages>" : "+"
+            },
+            "rdep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age" : 48,
+                "$<packages>" : "+"
+            }
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000','dep','cc ee','\'dd\'','"ff cc"'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'packages',['cc ee','\'dd\'','"ff cc"'])
+        self.__check_value_common(s,'rdep_http',1)
+        self.__check_value_common(s,'rdep_age',48)
+        self.__check_value_common(s,'CHOICECOMMAND','dep')
         self.__check_not_common(s,'json')
         self.__check_not_common(s,'dep_json')
         self.__check_not_common(s,'rdep_json')
         return
 
 
+    def test_A009(self):
+        commandline='''
+        {
+            "$verbose|v<verbosemode>" : "+",
+            "port|p<portnum>" : 7000,
+            "dep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age"  : 50,
+                "$<packages>" : "+"
+            },
+            "rdep<CHOICECOMMAND>" : {
+                "http" : true,
+                "age" : 48,
+                "$<packages>" : "+"
+            }
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000','rdep','cc ee','\'dd\'','"ff cc"'])
+        self.__check_value_common(s,'portnum',5000)
+        self.__check_value_common(s,'verbosemode',4)
+        self.__check_value_common(s,'dep_http',1)
+        self.__check_value_common(s,'dep_age',50)
+        self.__check_value_list(s,'packages',['cc ee','\'dd\'','"ff cc"'])
+        self.__check_value_common(s,'rdep_http',1)
+        self.__check_value_common(s,'rdep_age',48)
+        self.__check_value_common(s,'CHOICECOMMAND','rdep')
+        self.__check_not_common(s,'json')
+        self.__check_not_common(s,'dep_json')
+        self.__check_not_common(s,'rdep_json')
+        return
+
+    def test_A010(self):
+        commandline='''
+        {
+            "fdisk<CHOICECOMMAND>" : {
+                "$<packages>##to specify packages additional installed##" : "*"
+            },
+            "debootstrap<CHOICECOMMAND>" : {
+                "$<packages>##to specify packages additional installed##" : "*"
+            },
+            "mountalldir<CHOICECOMMAND>" : {
+                "$<packages>##to specify packages additional installed##" : "*"
+            },
+            "$<packages>##to specify packages additional installed##" : "*"
+        }
+        '''
+        s = self.__get_bash_output(options=commandline,params=['debootstrap','hello','ok'])
+        self.__check_value_common(s,'CHOICECOMMAND','debootstrap')
+        self.__check_value_list(s,'packages',['hello','ok'])
+        return
 
 def set_log_level(args):
     loglvl= logging.ERROR
@@ -468,10 +600,8 @@ def parse_inner(args):
 
 def cmd_change_test(args):
     reset_extargs_logger(args)
-    if args.verbose >=1 and ('-v' not in args.args and '--verbose' not in args.args):
-        args.args.append('-v')
     sys.argv[1:]=args.args
-    unittest.main()
+    unittest.main(verbosity=args.verbose,failfast=args.failfast)
     return
 
 
@@ -494,6 +624,7 @@ def main():
         "$caption## set caption ##" : "runcommand",
         "test|t##to test mode##" : false,
         "release|R##to release test mode##" : false,
+        "failfast|f" : false,
         "$" : "*"
     }
     '''

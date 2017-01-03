@@ -304,6 +304,7 @@ function assert_arr_equal()
 	while [ $_mod -lt $_len ]
 	do
 		_pair=`expr $_mod \+ $_len`
+		Debug "[$_mod] ${_arr[$_mod]} [$_pair] ${_arr[$_pair]}"
 		assert_str_equal "${_arr[$_mod]}" "${_arr[$_pair]}" 1
 		_mod=`expr $_mod \+ 1`
 	done
@@ -437,8 +438,29 @@ EOF
 	assert_str_equal "$linkfiles" "/tmp/linkfile"
 	assert_arr_equal "moduledirs" "inputarr" "${moduledirs[@]}" "'arch/x86'" "\"cc dd\""
 	return
-	return
+}
 
+function testcase_subcommand()
+{
+	subcommand=''
+	read -r -d '' OPTIONS <<EOF
+        {
+            "fdisk<CHOICECOMMAND>" : {
+                "\$<packages>##to specify packages additional installed##" : "*"
+            },
+            "debootstrap<CHOICECOMMAND>" : {
+                "\$<packages>##to specify packages additional installed##" : "*"
+            },
+            "mountalldir<CHOICECOMMAND>" : {
+            	"\$<packages>##to specify packages additional installed##" : "*"
+            },
+            "\$<packages>##to specify packages additional installed##" : "*"
+        }
+EOF
+	parse_command_line "$OPTIONS" "debootstrap" "hello" "ok"
+	assert_str_equal "$CHOICECOMMAND" "debootstrap"
+	assert_arr_equal "packages" "inputarr" "${packages[@]}" "hello" "ok"
+	return
 }
 
 function testcase_zero_args()
