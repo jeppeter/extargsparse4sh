@@ -9,8 +9,8 @@
 ```bash
 #! /bin/bash
 
-
-_scriptfile=`readlink -f $0`
+# use this read link because in mac os x ,this work
+_scriptfile=`perl -e "use Cwd abs_path; print abs_path(shift);" $0`
 scriptdir=`dirname $_scriptfile`
 
 

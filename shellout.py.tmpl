@@ -57,7 +57,12 @@ def quote_string(s):
 def __shell_out_list(argopts,args,keycls,keyname=None,defval=None):
     s = ''
     s += 'unset %s\n'%(keycls.varname)
-    s += 'declare -A -g %s\n'%(keycls.varname)
+    if sys.platform.lower() == 'darwin':
+        # in darwin no -g  in bash mode
+        # -a for array
+        s += 'declare -a  %s\n'%(keycls.varname)
+    else:
+        s += 'declare -A -g %s\n'%(keycls.varname)
     i = 0
     if keyname is None:
         keyname = keycls.optdest
@@ -104,7 +109,10 @@ def __shell_output_command_inner(argopts,parser,args,cmdname=''):
             elif opt.type == 'bool':
                 if opt.varname not in argopts.hasoutput:
                     s += 'unset %s\n'%(opt.varname)
-                    s += 'declare -g %s\n'%(opt.varname)
+                    if sys.platform.lower() == 'darwin':
+                        s += 'declare  %s\n'%(opt.varname)
+                    else:
+                        s += 'declare -g %s\n'%(opt.varname)
                     if getattr(args,opt.optdest,False):
                         s += '%s=1\n'%(opt.varname)
                     else:
@@ -113,7 +121,10 @@ def __shell_output_command_inner(argopts,parser,args,cmdname=''):
             elif opt.type == 'string' or opt.type == 'unicode':
                 if opt.varname not in argopts.hasoutput:
                     s += 'unset %s\n'%(opt.varname)
-                    s += 'declare -g %s\n'%(opt.varname)
+                    if sys.platform.lower() == 'darwin':
+                        s += 'declare  %s\n'%(opt.varname)
+                    else:
+                        s += 'declare -g %s\n'%(opt.varname)
                     val = getattr(args,opt.optdest,None)
                     if val is not None:                    
                         s += '%s="%s"\n'%(opt.varname,quote_string(val))
@@ -123,14 +134,20 @@ def __shell_output_command_inner(argopts,parser,args,cmdname=''):
             elif opt.type == 'long' or opt.type == 'int' or opt.type == 'count' :
                 if opt.varname not in argopts.hasoutput:
                     s += 'unset %s\n'%(opt.varname)
-                    s += 'declare -g %s\n'%(opt.varname)
+                    if sys.platform.lower() == 'darwin':
+                        s += 'declare  %s\n'%(opt.varname)
+                    else:
+                        s += 'declare -g %s\n'%(opt.varname)
                     val = getattr(args,opt.optdest,0)
                     s += '%s=%s\n'%(opt.varname,val)
                     argopts.hasoutput.append(opt.varname)
             elif opt.type == 'float':
                 if opt.varname not in argopts.hasoutput:
                     s += 'unset %s\n'%(opt.varname)
-                    s += 'declare -g %s\n'%(opt.varname)
+                    if sys.platform.lower() == 'darwin':
+                        s += 'declare  %s\n'%(opt.varname)
+                    else:
+                        s += 'declare -g %s\n'%(opt.varname)
                     val = getattr(args,opt.optdest,0.0)
                     s += '%s=%s\n'%(opt.varname,val)
                     argopts.hasoutput.append(opt.varname)
@@ -159,7 +176,10 @@ def bash_output(argopts,parser,args):
         keycls = parser.get_cmdkey(args.subcommand)
         if keycls.function is not None:
             s += 'unset %s\n'%(keycls.function)
-            s += 'declare -g %s\n'%(keycls.function)
+            if sys.platform.lower() == 'darwin':
+                s += 'declare  %s\n'%(keycls.function)
+            else:
+                s += 'declare -g %s\n'%(keycls.function)
             s += '%s=%s\n'%(keycls.function,args.subcommand)
             argopts.hasoutput.append(keycls.function)
         # to declare the subcommand ok
@@ -269,7 +289,10 @@ class debug_shellouttest_cases(unittest.TestCase):
         sarr = re.split('\n',s)
         ok = self.__has_line(sarr,'unset %s'%(key))
         self.assertEqual(ok,True)
-        ok = self.__has_line(sarr,'declare -g %s'%(key))
+        if sys.platform.lower() == 'darwin':
+            ok = self.__has_line(sarr,'declare  %s'%(key))
+        else:
+            ok = self.__has_line(sarr,'declare -g %s'%(key))
         self.assertEqual(ok,True)
         ok = self.__has_line(sarr,'%s=%s'%(key,value))
         self.assertEqual(ok,True)
@@ -278,7 +301,10 @@ class debug_shellouttest_cases(unittest.TestCase):
 
     def __check_value_list(self,s,key,value):
         sarr = re.split('\n',s)
-        ok = self.__has_line(sarr,'declare -A -g %s'%(key))
+        if sys.platform.lower() == 'darwin':
+            ok = self.__has_line(sarr,'declare -a  %s'%(key))
+        else:
+            ok = self.__has_line(sarr,'declare -A -g %s'%(key))
         self.assertEqual(ok,True)
         ok = self.__has_line(sarr,'unset %s'%(key))
         self.assertEqual(ok,True)
@@ -298,7 +324,10 @@ class debug_shellouttest_cases(unittest.TestCase):
 
     def __check_not_list(self,s,key):
         sarr = re.split('\n',s)
-        ok = self.__has_line(sarr,'delcare -A %s'%(key))
+        if sys.platform.lower() == 'darwin':
+            ok = self.__has_line(sarr,'delcare -a %s'%(key))
+        else:
+            ok = self.__has_line(sarr,'delcare -A %s'%(key))
         self.assertEqual(ok,False)
         return
 

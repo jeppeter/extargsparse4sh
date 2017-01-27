@@ -1,6 +1,22 @@
 #! /bin/bash
 
-_script_file=`readlink -f $0`
+Debug()
+{
+	local _fmt="$1"
+	shift 
+	local _backstack=0
+	local _fmtstr
+	if [ $# -gt 0 ]
+		then
+		_backstack="$1"
+	fi
+	_fmtstr="${BASH_SOURCE[$_backstack]}:${BASH_LINENO[$_backstack]} "
+	_fmtstr="${_fmtstr}$_fmt"
+
+	echo "${_fmtstr}" >/dev/stderr
+}
+
+_script_file=`perl -e "use Cwd abs_path; print abs_path(shift);" $0`
 script_dir=`dirname $_script_file`
 
 templatefile="$1"
@@ -12,18 +28,20 @@ read -r -d '' AWK_REPL_STR<<EOFCC
 	mexpr=sprintf(".*%s.*",replacekey);
 	if (match(\$0,mexpr)) {
 		gsub(replacekey,replacevalue);
-		printf("%s\n",\$0);
+		printf("%s\\n",\$0);
 	} else {
-		printf("%s\n",\$0);
+		printf("%s\\n",\$0);
 	}
 }
 EOFCC
 
+#Debug "AWK_REPL_STR [$AWK_REPL_STR]"
+
 tmpfile=`mktemp`
 # first to input the value
-cat "$templatefile" | sed 's/\\\\/%double_slash%/g' | sed 's/\\$/%endslash%/g' | sed 's/"\$/%quotedollar%/g'  | sed 's/\\\$/%dollarslash%/g' | sed 's/\\n/%newline%/g' | sed 's/\\/\\\\/g' | sed 's/\&/%specialcase%/g' > $tmpfile
+cat "$templatefile" | sed 's/\&/%back_run%/g' | sed 's/\\/%back_slash%/g' | sed 's/\$/%dollar%/g'  > $tmpfile
 replaceval=$(cat "$tmpfile" )
 extargsversion=$(cat "$script_dir/VERSION")
-awk -v replacekey='%EXTARGSPARSE%' -v replacevalue="$replaceval" "$AWK_REPL_STR" "$inputfile"  | awk -v replacekey='%EXTARGSPARSE4SH_VERSION%' -v replacevalue="$extargsversion"  "$AWK_REPL_STR" | sed 's/%newline%/\\n/g' |   sed 's/%endslash%/\\\\/g' |  sed 's/%dollarslash%/\\\\\\\$/g' | sed 's/%specialcase%/\&/g' | sed 's/%quotedollar%/"\\\$/g' | sed 's/%double_slash%/\\\\\\\\/g' >"$outputfile"
+gawk -v replacekey='%EXTARGSPARSE%' -v replacevalue="$replaceval" "$AWK_REPL_STR" "$inputfile"  | gawk -v replacekey='%EXTARGSPARSE4SH_VERSION%' -v replacevalue="$extargsversion"  "$AWK_REPL_STR" | sed 's/%dollar%/\\\$/g' | sed 's/%back_slash%/\\\\/g' | sed 's/%back_run%/\&/g' >"$outputfile"
 rm -f "$tmpfile"
-#echo "tmpfile ($tmpfile)" >&2
+#Debug "tmpfile ($tmpfile)"

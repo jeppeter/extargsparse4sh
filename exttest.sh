@@ -1,6 +1,11 @@
 #! /bin/bash
 
-_scriptfile=`readlink -f $0`
+if [ -n "$EXTTEST_DEBUG" ] && [ $EXTTEST_DEBUG -gt 3 ]
+	then
+	set -x
+fi
+
+_scriptfile=`perl -e "use Cwd abs_path; print abs_path(shift);" $0`
 scriptdir=`dirname $_scriptfile`
 test_verbose=0
 EXTARGSPARSE_LOGLEVEL=0

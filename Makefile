@@ -1,6 +1,6 @@
 
 ifeq (${V},)
-QUIET=@
+Q=@
 VERBOSE_OPTION:=
 else
 ifeq (${V},1)
@@ -13,30 +13,29 @@ VERBOSE_OPTION:=-vvv
 endif
 endif
 
-QUIET=
+Q=
 endif
 
 all:extargsparse4sh
-	${QUIET}bash ./exttest.sh ${VERBOSE_OPTION}
+	${Q}bash ./exttest.sh ${VERBOSE_OPTION}
 
 extargsparse4sh:extargsparse4sh.tmpl check
-	${QUIET}bash maketmpl shellout.py extargsparse4sh.tmpl extargsparse4sh
-	${QUIET}chmod +x extargsparse4sh
+	${Q}bash maketmpl shellout.py extargsparse4sh.tmpl extargsparse4sh
+	${Q}chmod +x extargsparse4sh
 
 check:checkcode
-	${QUIET}bash checkcode  | sed -e '/^$$/d' >shellout2.py
-	${QUIET}cat shellout.py | sed -e '/^$$/d' >shellout3.py
-	${QUIET}cmp --quiet shellout2.py shellout3.py ; _res=$$? ; if [ $$_res -ne 0 ] ; then echo "not make same" >&2 ; exit 3 ; fi
+	${Q}bash checkcode >shellout2.py
+	${Q}diff -B shellout2.py shellout.py ; _res=$$? ; if [ $$_res -ne 0 ] ; then echo "not make same" >&2 ; exit 3 ; fi
 
 checkcode:checkcode.tmpl shellout.py
-	${QUIET}bash maketmpl shellout.py checkcode.tmpl checkcode
+	${Q}bash maketmpl shellout.py checkcode.tmpl checkcode
 
 shellout.py:debug
-	${QUIET}python shellout.py -R && (  while [ 1 ];do   if [ -f shellout.py.touched ] ; then rm -f shellout.py.touched ;  break ;  fi ;  python  -c 'import time;time.sleep(0.1)'; done)
+	${Q}python shellout.py -R && (  while [ 1 ];do   if [ -f shellout.py.touched ] ; then rm -f shellout.py.touched ;  break ;  fi ;  python  -c 'import time;time.sleep(0.1)'; done)
 
 debug:shellout.py.tmpl
-	${QUIET}python format_template.py -i shellout.py.tmpl -P "%EXTARGSPARSE_STRIP_CODE%" -r "keyparse\.=" -c ExtArgsParse.get_subcommands -c ExtArgsParse.get_cmdopts -E "^debug_.*" -m "[r'^##extractstart.*',r'^##extractend.*']" -m "[r'^##importdebugstart.*',r'^##importdebugend.*']" -vvvv -o shellout.py extargsparse.__key__ extargsparse.__lib__
-	${QUIET}python shellout.py --test ; _res=$$? ; if  [ $$_res -ne 0 ] ; then /bin/echo "can not run test shellout.py ok ($$_res)" >&2 ; exit $$_res ; fi
+	${Q}python format_template.py -i shellout.py.tmpl -P "%EXTARGSPARSE_STRIP_CODE%" -r "keyparse\.=" -c ExtArgsParse.get_subcommands -c ExtArgsParse.get_cmdopts -E "^debug_.*" -m "[r'^##extractstart.*',r'^##extractend.*']" -m "[r'^##importdebugstart.*',r'^##importdebugend.*']" -vvvv -o shellout.py extargsparse.__key__ extargsparse.__lib__
+	${Q}python shellout.py --test ; _res=$$? ; if  [ $$_res -ne 0 ] ; then /bin/echo "can not run test shellout.py ok ($$_res)" >&2 ; exit $$_res ; fi
 
 clean:
-	${QUIET}rm -f extargsparse4sh checkcode shellout2.py shellout3.py shellout.py shellout.py.touched
+	${Q}rm -f extargsparse4sh checkcode shellout2.py shellout3.py shellout.py shellout.py.touched
