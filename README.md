@@ -2,6 +2,7 @@
 > [extargsparse](https://github.com/jeppeter/extargsparse) transport for bash
 
 ### Release History
+* Jan 3rd 2017 Release 0.2.2 to fixup the bug in multiple definition of same target
 * Nov 13th 2016 Release 0.2.0 to make compatible with quote string like "\"variable\""
 
 ## simple example
