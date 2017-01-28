@@ -20,19 +20,24 @@ parse_command_line()
 	local _jsonparse=$1
     local _parsestr
     local _vermode=""
+    local _i
 	shift
 
-    if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -gt 2 ]
+    if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -ge 2 ]
         then
         echo "_jsonparse($_jsonparse) args($@)cnt($#) output($EXTARGSPARSE)" >&2
-        _vermode="-vvvv"
+        _vermode="-"
+        for _i in $(seq 1 $EXTARGSPARSE_LOGLEVEL)
+        do
+        	_vermode="${_vermode}v"
+        done
     fi
 	_parsestr=$(echo "$_jsonparse" | python -c "$EXTARGSPARSE" $_vermode --caption "$0"  -- "$@" )
-    if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -gt 2 ]
+    if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -ge 2 ]
        then
 	   echo "_parsestr ($_parsestr)" >&2
     fi
-	eval "$_parsestr"
+	eval "$_parsestr" 2>/dev/null
 	return
 }
 

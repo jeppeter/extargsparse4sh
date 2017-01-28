@@ -285,7 +285,7 @@ function assert_arr_equal()
 	shift
 	local _bname="$1"
 	shift
-	local -A _arr
+	local -a _arr
 	local -i _cnt
 	local -i _mod
 	local -i _len
@@ -336,7 +336,9 @@ function testcase_cdrun_case()
 EOF
 
 	parse_command_line "$OPTIONS" -vvvV -d -l "/tmp/cdrun" -t "css" -o "bootorder=cc" -f "/tmp/win10.vdi" "vv"
+	Debug "verbose[$verbose]"
 	assert_int_equal "$verbose"	 3
+	Debug "vncmode[$vncmode]"
 	assert_int_equal "$vncmode" 1
 	assert_int_equal "$debugmode" 1
 	assert_str_equal "$debugfileinner" "/tmp/cdrun"
@@ -542,10 +544,10 @@ Usage()
 while [ $# -gt 0 ]
 do
 	key="$1"
-	longopt=`expr match "$key" '--.*'`
-	shortopt=`expr match "$key" '-.*'`
-	longkey=`expr match "$key" '--\(.*\)'`
-	shortkey=`expr match "$key" '-\(.*\)'`
+	longopt=`echo "$key" | grep -e '^--' | wc -l | tr -d [:space:]`
+	shortopt=`echo "$key" | grep -e '^-' | wc -l | tr -d [:space:]`
+	longkey=`echo "$key" | sed 's/^--\(.*\)/\1/'`
+	shortkey=`echo "$key" | sed 's/^-\(.*\)/\1/'`
 	if [ $longopt -gt 0 ]
 		then
 		case "$longkey" in
@@ -561,7 +563,7 @@ do
 		esac
 	elif [ $shortopt -gt 0 ]
 		then
-		keys=$(echo "$shortkey" | sed 's/\(.\)/\1\n/g')
+		keys=$(echo "$shortkey" | sed 's/\(.\)/\1 /g' | tr [:space:] "\n" )
 		for i in $keys
 		do
 			case "$i" in
