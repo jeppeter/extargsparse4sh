@@ -36,7 +36,7 @@ list_debug()
 	local _cnt=0
 	if [ $# -gt 0 ]
 	then
-		local -A _list
+		local -a _list
 		_cnt=0
 		for _item in "$@"
 		do

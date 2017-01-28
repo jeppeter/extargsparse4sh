@@ -2,6 +2,7 @@
 > [extargsparse](https://github.com/jeppeter/extargsparse) transport for bash
 
 ### Release History
+* Jan 28th 2017 Release 0.2.4 to port extargsparse4sh to OS X Sierra
 * Jan 3rd 2017 Release 0.2.2 to fixup the bug in multiple definition of same target
 * Nov 13th 2016 Release 0.2.0 to make compatible with quote string like "\"variable\""
 
@@ -46,7 +47,7 @@ list_debug()
     local _cnt=0
     if [ $# -gt 0 ]
     then
-        local -A _list
+        local -a _list
         _cnt=0
         for _item in "$@"
         do
