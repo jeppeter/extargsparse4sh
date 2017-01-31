@@ -495,6 +495,24 @@ function testcase_extargs_version()
 	return
 }
 
+function testcase_environ_get()
+{
+	read -r -d '' OPTIONS<<EOFMM
+	{
+		"verbose|v" : "+",
+		"offset|o" : 150
+	}
+EOFMM
+	export EXTARGS_VERBOSE=4
+	export EXTARGS_OFFSET=0x40
+	parse_command_line "$OPTIONS"
+	assert_int_equal "$verbose" "4"
+	assert_int_equal "$offset" "64"
+	unset EXTARGS_OFFSET
+	unset EXTARGS_VERBOSE
+	return
+}
+
 
 function get_testcase_funcnames()
 {
