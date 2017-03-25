@@ -32,7 +32,7 @@ parse_command_line()
         	_vermode="${_vermode}v"
         done
     fi
-	_parsestr=$(echo "$_jsonparse" | python -c "$EXTARGSPARSE" $_vermode --caption "$0"  -- "$@" )
+	_parsestr=$(echo "$_jsonparse" | python -c "$EXTARGSPARSE" $_vermode --caption "$0"  parse -- "$@" )
     if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -ge 2 ]
        then
 	   echo "_parsestr ($_parsestr)" >&2

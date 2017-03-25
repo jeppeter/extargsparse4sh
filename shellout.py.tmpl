@@ -614,6 +614,34 @@ def cmd_change_release(args):
     rtools.release_file('__main__',None,excludes,macros,cmdchanges,repls,None,None)
     return
 
+def test_handler(args,parser):
+    set_log_level(args)
+    cmd_change_test(args)
+    sys.exit(0)
+    return
+
+def release_handler(args,parser):
+    set_log_level(args)
+    cmd_change_release(args)
+    sys.exit(0)
+    return
+
+def parse_handler(args,parser):
+    set_log_level(args)
+    if args.catch:
+        try:
+            parse_inner(args)
+        except Exception as e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            frame = sys._getframe(1)
+            debuginfo = '[%-10s:%-20s:%-5s] '%(frame.f_code.co_filename,frame.f_code.co_name,frame.f_lineno)
+            sys.stdout.write('cat <<EOM\n%s\t %s:%s:%s\nEOM\n'%(debuginfo,exc_type,exc_value,exc_traceback))
+            sys.stdout.write('exit 3')
+            sys.exit(3)
+    else:
+        parse_inner(args)
+    sys.exit(0)
+    return
 
 def main():
     inner_command='''
@@ -622,33 +650,26 @@ def main():
         "catch|C## to not catch the exception ##" : true,
         "input|i## to specify input default(stdin)##" : null,
         "$caption## set caption ##" : "runcommand",
-        "test|t##to test mode##" : false,
         "release|R##to release test mode##" : false,
         "failfast|f" : false,
-        "$" : "*"
+        "parse<parse_handler>" : {
+            "$" : "*"
+        },
+        "test<test_handler>" : {
+            "$" : "*"
+        },
+        "release<release_handler>" : {
+            "$" : "*"
+        },
+        "retpattern<retpattern_handler>" : {
+            "$" : 0
+        }
     }
     '''
     parser = ExtArgsParse()
     parser.load_command_line_string(inner_command)
     args = parser.parse_command_line()
-    set_log_level(args)
-    if args.test:
-        cmd_change_test(args)
-    elif args.release:
-        cmd_change_release(args)
-    else:
-        if args.catch:
-            try:
-                parse_inner(args)
-            except Exception as e:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                frame = sys._getframe(1)
-                debuginfo = '[%-10s:%-20s:%-5s] '%(frame.f_code.co_filename,frame.f_code.co_name,frame.f_lineno)
-                sys.stdout.write('cat <<EOM\n%s\t %s:%s:%s\nEOM\n'%(debuginfo,exc_type,exc_value,exc_traceback))
-                sys.stdout.write('exit 3')
-                sys.exit(3)
-        else:
-            parse_inner(args)
+    raise Exception('[%s] not supported subcommand'%(args.subcommand))
     return
 
 if __name__ == '__main__':
