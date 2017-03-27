@@ -351,6 +351,7 @@ def shell_optparse(args,validx,keycls,params):
             # that is the shell options
             shell_env_string += l
     logging.info('[%s]=(%s)'%(keycls.optdest,argsvalue))
+    logging.info('shell_env_string (%s)'%(shell_env_string))
     setattr(args,keycls.optdest,argsvalue)
     return numret
 

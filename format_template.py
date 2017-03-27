@@ -7,21 +7,8 @@ import inspect
 import logging
 import re
 import extargsparse
+import disttools
 
-def _reload_rtools_dir(curpath):
-    _extargs_init_py = os.path.join(curpath,'rtools.py')
-    if os.path.exists(_extargs_init_py):
-        if curpath != sys.path[0]:
-            if curpath in sys.path:
-                sys.path.remove(curpath)
-            oldpath=sys.path
-            sys.path = [curpath]
-            sys.path.extend(oldpath)
-    return
-
-_reload_rtools_dir(os.path.abspath(os.path.dirname(__file__)))
-_reload_rtools_dir(os.path.abspath(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..','..')))
-import rtools
 
 
 def check_method_callback(key,val,ctx):
@@ -77,7 +64,7 @@ def check_version(verleast):
 def output_handler(args):
 	# now to get the file string
 	s = ''
-	check_version('0.5.8')
+	check_version('0.9.0')
 	excludes = args.excludes
 	macros = []
 	for m in args.macro:
@@ -96,7 +83,7 @@ def output_handler(args):
 	totals = ''
 	for modname in args.args:
 		mod = importlib.import_module(modname)
-		totals += '%s'%(rtools.release_get_output(mod,excludes,macros,cmdchgs,repls,check_method_callback,args,True))
+		totals += '%s'%(disttools.release_get_output(mod,excludes,macros,cmdchgs,repls,check_method_callback,args,True))
 		#logging.info('totals (%s)'%(totals))
 
 	fin = sys.stdin

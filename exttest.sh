@@ -198,8 +198,8 @@ assert() {
       _callnum="$_expr4"
     fi
     _nextnum=`expr $_callnum \+ 1`
+    Debug "assert ( $_expr1 $_expr2 $_expr3 )"
     __assert "true" "$_expr1" "$_expr2" "$_expr3" $_nextnum
-    Debug "assert ( $_expr1 $_expr2 $_expr3 ) succ"
   else
       if [ $# -lt 2 ]
         then
@@ -210,8 +210,8 @@ assert() {
       _callnum="$_expr3"
     fi
     _nextnum=`expr $_callnum \+ 1`
-    __assert "true" "$_expr1" "$_expr2" $_nextnum
-    Debug "assert ($_expr1 $_expr2) succ"
+    Debug "assert ($_expr1 $_expr2)"
+    __assert "true" "$_expr1" "$_expr2" $_nextnum    
   fi
 }
 
@@ -511,6 +511,115 @@ EOFMM
 	unset EXTARGS_OFFSET
 	unset EXTARGS_VERBOSE
 	return
+}
+
+function push_pairs()
+{
+	local _validx="$1"
+	shift
+	local -a _params=($@)
+	local _maxneed=`expr $_validx \+ 1`
+	local _totalidx=${#ARRAYPAIR[@]}
+	if [ $_maxneed -ge ${#_params[@]} ]
+		then
+		echo "could not get parse" >&2
+		echo "error"
+		return
+	fi
+	ARRAYPAIR[$_totalidx]=${_params[$_validx]}
+	_totalidx=`expr $_totalidx \+ 1`
+	_validx=`expr $_validx \+ 1`
+	ARRAYPAIR[$_totalidx]=${_params[$_validx]}
+	echo "2"
+	return
+}
+
+function testcase_get_optparse()
+{
+	read -r -d '' OPTIONS<<EOFMM
+	{
+		"verbose|v<VERBOSE>" : "+",
+		"array|a<ARRAYPAIR>!optparse=push_pairs!" : [],
+		"\$<ARGS>" : "*"
+	}
+EOFMM
+	parse_command_line "$OPTIONS" "-vvvva" "hello" "good" "--array" "new" "cc"
+	assert_arr_equal "ARRAYPAIR" "inputarr" "${ARRAYPAIR[@]}" "hello" "good" "new" "cc"
+	assert_int_equal "$VERBOSE" "4"
+	assert_arr_equal "ARGS" "inputarr" "${ARGS[@]}"
+}
+
+function push_pairs_global()
+{
+	local _validx="$1"
+	shift
+	local -a _params=($@)
+	local _maxneed=`expr $_validx \+ 1`
+	local _totalidx=${#ARRAYPAIR[@]}
+	if [ $_maxneed -ge ${#_params[@]} ]
+		then
+		echo "could not get parse" >&2
+		echo "error"
+		return
+	fi
+	ARRAYPAIR[$_totalidx]=${_params[$_validx]}
+	GLOBAL_ARRAY[$_totalidx]=${_params[$_validx]}
+	_totalidx=`expr $_totalidx \+ 1`
+	_validx=`expr $_validx \+ 1`
+	ARRAYPAIR[$_totalidx]=${_params[$_validx]}
+	GLOBAL_ARRAY[$_totalidx]=${_params[$_validx]}
+	echo "2"
+	return
+}
+
+
+function testcase_push_global()
+{
+	unset GLOBAL_ARRAY
+	declare -g -a GLOBAL_ARRAY
+	read -r -d '' OPTIONS<<EOFMM
+	{
+		"verbose|v<VERBOSE>" : "+",
+		"array|a<ARRAYPAIR>!optparse=push_pairs_global!" : [],
+		"\$<ARGS>" : "*"
+	}
+EOFMM
+	parse_command_line "$OPTIONS" "-vvvva" "hello" "good" "--array" "new" "cc"
+	assert_arr_equal "ARRAYPAIR" "inputarr" "${ARRAYPAIR[@]}" "hello" "good" "new" "cc"
+	assert_int_equal "$VERBOSE" "4"
+	assert_arr_equal "GLOBAL_ARRAY" "inputarr" "${GLOBAL_ARRAY[@]}" "hello" "good" "new" "cc"
+	assert_arr_equal "ARGS" "inputarr" "${ARGS[@]}"
+}
+
+function testcase_longjsonfile()
+{
+	read -r -d '' OPTIONS<<EOFMM
+	{
+		"verbose|v<VERBOSE>" : "+",
+		"array|a<ARRAY>" : [],
+		"port|p" : 3000,
+		"\$" : "*"
+	}
+EOFMM
+	read -r -d '' EXTOPTS<<EOFMM
+	{
+		"jsonlong" : "jsonfile"
+	}
+EOFMM
+	read -r -d '' JSONCONTENT<<EOFMM
+	{
+		"verbose" : 4,
+		"array" : ["hello","new"],
+		"port" : 9000
+	}
+EOFMM
+	tempfile=`mktemp --suffix .json`
+	echo "${JSONCONTENT}" >$tempfile
+	parse_command_line_ex "$OPTIONS" "$EXTOPTS" "--jsonfile" "$tempfile"
+	assert_int_equal "$VERBOSE" 4
+	assert_arr_equal "ARRAY" "inputarr" "${ARRAY[@]}" "hello"  "new"
+	assert_int_equal "$port" 9000
+	rm -f $tempfile
 }
 
 

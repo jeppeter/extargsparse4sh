@@ -5,6 +5,9 @@ import json
 import logging
 import re
 import importlib
+import random
+import subprocess
+import threading
 if sys.version[0] == '2':
     import StringIO
 else:
@@ -12,26 +15,47 @@ else:
 
 
 ##importdebugstart not use modules
-def _reload_rtools_path(curpath):
-    _rtools_py = os.path.join(curpath,'rtools.py')
-    if os.path.exists(_rtools_py):
-        if curpath != sys.path[0]:
-            if curpath in sys.path:
-                sys.path.remove(curpath)
-            oldpath=sys.path
-            sys.path = [curpath]
-            sys.path.extend(oldpath)
-    return
-
-_reload_rtools_path(os.path.abspath(os.path.dirname(__file__)))
-_reload_rtools_path(os.path.abspath(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..','..')))
-import extargsparse
-import rtools
 import unittest
 import tempfile
+import disttools
 ##importdebugend not use modules
 
 %EXTARGSPARSE_STRIP_CODE%
+
+def write_file(s,outfile=None):
+    fout = sys.stdout
+    if outfile is not None:
+        fout = open(outfile,'wb')
+    bmode = False
+    if 'b' in fout.mode:
+        bmode = True
+    if sys.version[0] == '2' or not bmode:
+        fout.write('%s'%(s))
+    else:
+        fout.write(s.encode(encoding='UTF-8'))
+    if fout != sys.stdout:
+        fout.close()
+    fout = None
+    return
+
+def read_file(infile=None):
+    s = ''
+    fin = sys.stdin
+    if infile is not None:
+        fin = open(infile,'rb')
+    bmode = False
+    if 'b' in fin.mode:
+        bmode = True
+    for l in fin:
+        if sys.version[0] == '2' or not bmode:
+            s += l
+        else:
+            s += l.decode(encoding='UTF-8')
+    if fin != sys.stdin:
+        fin.close()
+    fin = None
+    logging.info('[%s]s (%s)'%(infile,s))
+    return s
 
 
 def quote_string(s):
@@ -152,6 +176,324 @@ def __shell_output_command(argopts,parser,args,cmdname=''):
     return s
 
 
+class OutputCollect(_LoggerObject):
+    def __init__(self,output):
+        super(OutputCollect,self).__init__()
+        self.__output = output
+        self.__input = []
+        self.__thread =threading.Thread(target=self.input_handle,args=())
+        self.__thread.start()
+        return
+    def __trans_to_string(self,s):
+        if sys.version[0] == '3':
+            encodetype = ['UTF-8','latin-1']
+            idx=0
+            while idx < len(encodetype):
+                try:
+                    return s.decode(encoding=encodetype[idx])
+                except:
+                    idx += 1
+            raise Exception('not valid bytes (%s)'%(repr(s)))
+        return s
+
+    def input_handle(self):
+        for line in iter(self.__output.readline, b''):
+            transline = self.__trans_to_string(line)
+            self.__input.append(transline)
+        return
+
+
+    def get_lines(self):
+        if self.__thread is not None:
+            self.__thread.join()
+            self.__thread = None
+            self.__output = None
+        return self.__input
+
+shell_env_string=''
+shell_orig_env_string=''
+shell_verbose_mode = 0
+shell_bash_bin = '/bin/bash'
+RANDOM_LOWER_CHARS = 'abcdefghijklmnopqrstuvwxyz'
+RANDOM_UPPER_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+RANDOM_NUMBER_CHARS = '0123456789'
+RANDOM_ALPHBET_CHARS = RANDOM_LOWER_CHARS + RANDOM_UPPER_CHARS
+RANDOM_FUNC_CHARS = RANDOM_ALPHBET_CHARS + RANDOM_NUMBER_CHARS
+
+def get_random_function_name(ins,number=10):
+    while True:
+        s = ''
+        for i in range(number):
+            if i > 0:
+                s += random.choice(RANDOM_FUNC_CHARS)
+            else:
+                s += random.choice(RANDOM_ALPHBET_CHARS)
+        chgs = ins.replace(s,'',0)
+        if chgs == ins:
+            return s
+    return None
+
+def format_tab_line(s,tabs=0):
+    rets = ' ' * tabs * 4
+    rets += '%s\n'%(s)
+    return rets
+
+
+def shell_optparse(args,validx,keycls,params):
+    global shell_env_string
+    global shell_verbose_mode
+    global shell_bash_bin
+    if keycls.attr is None or keycls.attr.shellfunc is None:
+        # this is the 
+        return 0
+    devnullfd = None
+    if shell_verbose_mode < 3:
+        devnullfd = open(os.devnull,'w')
+
+    format_out_lines = 'shopt -s extglob\n%s\n'%(shell_env_string)
+    funcname = get_random_function_name(shell_env_string)
+    function_code = ''
+    function_code += format_tab_line('%s()'%(funcname))
+    function_code += format_tab_line('{')
+    if keycls.type == 'list':
+        function_code += format_tab_line('local _idx',1)
+        function_code += format_tab_line('local _curelm',1)
+    if keycls.type == 'list':
+        function_code += format_tab_line('unset %s'%(keycls.varname),1)
+        function_code += format_tab_line('declare -g -a %s'%(keycls.varname),1)
+        logging.info('keycls.optdest [%s]'%(keycls.optdest))
+        if getattr(args,keycls.optdest,None) is not None:
+            idx = 0
+            for c in getattr(args,keycls.optdest,[]):
+                function_code += format_tab_line('%s[%d]=%s'%(keycls.varname,idx,c),1)
+                idx += 1
+    else:
+        function_code += format_tab_line('unset %s'%(keycls.varname),1)
+        function_code += format_tab_line('declare -g %s'%(keycls.varname),1)
+        if keycls.type == 'bool':
+            value = getattr(args,keycls.optdest,False)
+            if value:
+                function_code += format_tab_line('%s=1'%(keycls.varname),1)
+            else:
+                function_code += format_tab_line('%s=0'%(keycls.varname),1)
+        elif keycls.type == 'string':
+            value = getattr(args,keycls.optdest,None)
+            if value is not None:
+                function_code += format_tab_line('%s=%s'%(keycls.varname,value),1)
+        elif keycls.type == 'int' or keycls.type == 'count' or keycls.type == 'float':
+            value = getattr(args,keycls.optdest,None)
+            if value is not None:
+                function_code += format_tab_line('%s=%s'%(keycls.varname,value),1)
+    function_code += format_tab_line('',1)
+    function_code += format_tab_line('EXTARGSPARSE4SH_LONGOPT="%s"'%(keycls.longopt),1)
+    if keycls.shortopt is not None:
+        function_code += format_tab_line('EXTARGSPARSE4SH_SHORTOPT="%s"'%(keycls.shortopt),1)
+    else:
+        function_code += format_tab_line('EXTARGSPARSE4SH_SHORTOPT=',1)
+    function_code += format_tab_line('EXTARGSPARSE4SH_VARNAME="%s"'%(keycls.varname),1)
+
+    callstr = '%s "%s"'%(keycls.attr.shellfunc,validx)
+    for c in params:
+        callstr += ' "%s"'%(c)
+    function_code += format_tab_line(callstr,1)
+
+    # now we should make sure the test case
+    if keycls.type == 'list':
+        function_code += format_tab_line('_idx=0',1)
+        function_code += format_tab_line('for _curelm in "${%s[@]}"'%(keycls.varname),1)
+        function_code += format_tab_line('do',1)
+        function_code += format_tab_line('echo "%s[$_idx]=$_curelm"'%(keycls.varname),2)
+        function_code += format_tab_line('_idx=`expr $_idx \+ 1`',2)
+        function_code += format_tab_line('done',1)
+    else:
+        function_code += format_tab_line('%s=$%s'%(keycls.varname,keycls.varname),1)
+    function_code += format_tab_line('echo ""',1)
+    function_code += format_tab_line('return',1)
+    function_code += format_tab_line('}',0)
+
+    logging.info('function_code (%s)'%(function_code))
+    logging.info('format_out_lines (%s)'%(format_out_lines))
+
+    p = subprocess.Popen(shell_bash_bin,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=devnullfd,shell=False)  
+    outhdl = OutputCollect(p.stdout)
+    # now to give the environment
+    if sys.version[0] == '2':
+        p.stdin.write(format_out_lines)
+        p.stdin.write(function_code)
+        p.stdin.write('%s\n'%(funcname))
+        p.stdin.write('declare\n')
+    else:
+        p.stdin.write(bytes(format_out_lines,'UTF-8'))
+        p.stdin.write(bytes(function_code,'UTF-8'))
+        p.stdin.write(bytes('%s\n'%(funcname),'UTF-8'))
+        p.stdin.write(bytes('declare\n','UTF-8'))
+    p.stdin.close()
+    # we get lines
+    outlines = outhdl.get_lines()
+    outhdl = None
+    if devnullfd is not None:
+        devnullfd.close()
+    devnullfd = None
+
+    # now pass the 
+    idx = 0
+    numret = 0
+    intexpr = re.compile('^(\d+)$')
+    listexpr = re.compile('%s\[([\d]+)\]=(.*)'%(keycls.varname))
+    intvarexpr = re.compile('%s=([\d]+)'%(keycls.varname))
+    floatvarexpr = re.compile('%s=([\d]+(\.[\d]+)?)'%(keycls.varname))
+    boolvarexpr = re.compile('%s=([01])'%(keycls.varname))
+    strvarexpr = re.compile('%s=(.*)'%(keycls.varname))
+    envstarted = 0
+    argsvalue = None
+    if keycls.type == 'list':
+        argsvalue = []
+    for l in outlines:  
+        idx += 1
+        if idx == 1:
+            if intexpr.match(l.rstrip('\r\n')):
+                numret = int(l.rstrip('\r\n'))
+            elif l.rstrip('\r\n') == 'error':
+                raise Exception('get error')
+        elif envstarted == 0 and l.rstrip('\r\n') == '':
+            shell_env_string = ''
+            envstarted = 1
+        elif envstarted == 0:
+            # it is the value one
+            startename = '%s'%(keycls.varname)
+            if l.startswith(startename):
+                if keycls.type == 'list':
+                    m = listexpr.findall(l.rstrip('\r\n'))
+                    if m is not None and len(m) > 0 and len(m[0]) == 2:
+                        listidx = int(m[0][0])
+                        v = m[0][1]
+                        if listidx == len(argsvalue):
+                            argsvalue.append(v)
+                        else:
+                            logging.warn('[%s] not valid name'%(l.rstrip('\r\n')))
+                    else:
+                        logging.warn('[%s] not valid for list'%(l.rstrip('\r\n')))
+                elif keycls.type == 'string' or (keycls.type == 'unicode' and sys.version[0] == '2'):
+                    m = strvarexpr.findall(l.rstrip('\r\n'))
+                    if m is not None and argsvalue is None:
+                        argsvalue = m[0]
+                    else:
+                        logging.warn('[%s] not valid for string'%(l.rstrip('\r\n')))
+                elif keycls.type == 'count' or keycls.type == 'int' or keycls.type == 'long':
+                    m = intvarexpr.findall(l.rstrip('\r\n'))
+                    if m is not None and argsvalue is None:
+                        argsvalue = int(m[0])
+                    else:
+                        logging.warn('[%s] not valid for %s'%(l.rstrip('\r\n'),keycls.type))
+                elif keycls.type == 'float':
+                    m = floatvarexpr.findall(l.rstrip('\r\n'))
+                    if m is not None and len(m[0]) > 0 and argsvalue is None:
+                        argsvalue = float(m[0][0])
+                    else:
+                        logging.warn('[%s] not valid for %s'%(l.rstrip('\r\n'),keycls.type))
+                elif keycls.type == 'bool':
+                    m = boolvarexpr.findall(l.rstrip('\r\n'))
+                    if m is not None and len(m) > 0 and argsvalue is None:
+                        if int(m[0]) > 0:
+                            argsvalue = True
+                        else:
+                            argsvalue = False
+                    else:
+                        logging.warn('[%s] not valid for %s'%(l.rstrip('\r\n'),keycls.type))
+                else:
+                    logging.warn('unknown type [%s]'%(keycls.type))
+
+        else:
+            # that is the shell options
+            shell_env_string += l
+    logging.info('[%s]=(%s)'%(keycls.optdest,argsvalue))
+    logging.info('shell_env_string (%s)'%(shell_env_string))
+    setattr(args,keycls.optdest,argsvalue)
+    if devnullfd is not None:
+        devnullfd.close()
+    devnullfd = None
+    return numret
+
+def shell_helpfunc(keycls):
+    global shell_verbose_mode
+    global shell_env_string
+    global shell_bash_bin
+    if keycls.attr is None or keycls.attr.shell_opthelp is None:
+        return ''
+    format_out_lines = 'shopt -s extglob\n%s\n'%(shell_env_string)
+    funcname = get_random_function_name(shell_env_string)
+    function_code = ''
+    function_code += format_tab_line('%s()'%(funcname),0)
+    function_code += format_tab_line('{',0)
+    function_code += format_tab_line('EXTARGSPARSE4SH_LONGOPT="%s"'%(keycls.longopt),1)
+    if keycls.shortopt is not None:
+        function_code += format_tab_line('EXTARGSPARSE4SH_SHORTOPT="%s"'%(keycls.shortopt),1)
+    else:
+        function_code += format_tab_line('EXTARGSPARSE4SH_SHORTOPT=',1)
+    function_code += format_tab_line('EXTARGSPARSE4SH_VARNAME="%s"'%(keycls.varname),1)
+    function_code += format_tab_line('%s'%(keycls.attr,shell_opthelp),1)
+    function_code += format_tab_line('echo ""',1)
+    function_code += format_tab_line('return',1)
+    function_code += format_tab_line('}',0)
+
+    logging.info('function_code (%s)'%(function_code))
+    devnullfd = None
+    if shell_verbose_mode < 3:
+        devnullfd = open(os.devnull,'w')
+
+    p = subprocess.Popen(shell_bash_bin,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=devnullfd,shell=False)  
+    outhdl = OutputCollect(p.stdout)
+    # now to give the environment
+    if sys.version[0] == '2':
+        p.stdin.write(format_out_lines)
+        p.stdin.write(function_code)
+        p.stdin.write('%s'%(funcname))
+        p.stdin.write('declare')
+    else:
+        p.stdin.write(bytes(format_out_lines,'UTF-8'))
+        p.stdin.write(bytes(function_code,'UTF-8'))
+        p.stdin.write(bytes('%s\n'%(funcname),'UTF-8'))
+        p.stdin.write(bytes('declare\n','UTF-8'))
+    p.stdin.close()
+    # we get lines
+    outlines = outhdl.get_lines()
+    outhdl = None
+    retlines = ''
+    envstarted = 0
+    for l in outlines:
+        if envstarted == 0 and l.rstrip('\r\n') == '':
+            envstarted = 1
+            shell_env_string = ''
+        elif envstarted == 0:
+            retlines += l.rstrip('\r\n')
+        else:
+            shell_env_string += l
+    logging.info('retlines [%s]'%(retlines))
+    if devnullfd is not None:
+        devnullfd.close()
+    devnullfd = None
+    return retlines
+
+
+def get_decl_string(l):
+    s = ''
+    if l is not None and len(l) > 0:
+        if l[0] == r'%':
+            firstdollar = 0
+            secdollar = -1
+            idx = 1
+            while idx < len(l):
+                if l[idx] == r'%':
+                    secdollar = idx
+                    break
+                idx += 1
+            if secdollar > 0:
+                repls = l[:(secdollar+1)]
+                s = l.replace(repls,'\n')
+    return s
+
+
+
 def bash_output(argopts,parser,args):
     s = ''
     argopts.hasoutput= []
@@ -169,24 +511,72 @@ def bash_output(argopts,parser,args):
             # to give the command line
             newname = '.'.join(sarr[:i])
             s += __shell_output_command_inner(argopts,parser,args,newname)
-            i -= 1            
+            i -= 1
     s +=  __shell_output_command(argopts,parser,args)
     logging.info('output (%s)'%(s))
     return s
 
-def format_bash_output(args,options,params=None):
+def get_replace_string(l):
+    i = 0
+    newname = get_random_function_name(l)
+    return '%%%s%%'%(newname) +  l.replace('\n','%%%s%%'%(newname))
+
+def __set_optparse_function(argsopt,parser,cmdname=None):
+    if cmdname is None:
+        cmdname = ''
+    s = ''
+    opts = parser.get_cmdopts(cmdname)
+    if opts is not None:
+        for opt in opts:
+            logging.info('[%s] opt[%s]'%(cmdname,opt))
+            if not opt.isflag or opt.type == 'args' or \
+                opt.type == 'jsonfile' or opt.type == 'help' :
+                continue
+            if opt.attr is not None and opt.attr.optparse is not None:
+                if opt.attr.shellfunc is None:
+                    logging.info('set [%s] for shell_optparse'%(opt.optdest))
+                    opt.attr.shellfunc = opt.attr.optparse
+                    opt.attr.optparse = 'shell_optparse'
+
+            if opt.attr is not None and opt.attr.opthelp is not None:
+                if opt.attr.shell_opthelp is None:
+                    logging.info('set [%s] for shell_opthelp'%(opt.optdest))
+                    opt.attr.shell_opthelp = opt.attr.opthelp
+                    opt.attr.opthelp = 'shell_opthelp'
+
+    subcmds = parser.get_subcommands(cmdname)
+    if subcmds is not None:
+        for c in subcmds:
+            cname = '%s'%(cmdname)
+            if len(cname) > 0:
+                cname += '.'
+            cname += c
+            __set_optparse_function(argsopt,parser,cname)
+    return
+
+
+def set_optparse_function(argsopt,parser):
+    __set_optparse_function(argsopt,parser)
+    return
+
+
+def format_bash_output(argsopt,options,params=None,extoptionstr=None):
     s = ''
     try:
-        extoptions = ExtArgsOptions()
-        extoptions.prog = args.caption
+        extoptions = ExtArgsOptions(extoptionstr)
+        extoptions.prog = argsopt.caption
         parser = ExtArgsParse(extoptions)
         parser.load_command_line_string(options)
+        logging.info('before set parser')
+        set_optparse_function(argsopt,parser)
+        logging.info('get set parser')
         args = parser.parse_command_line(params,parser,'bash')
-        s += bash_output(args,parser,args)
-    except Exception as e:
+        s += bash_output(argsopt,parser,args)
+    except:
         s = 'cat <<EOFMM\n'
         exc_type, exc_value, exc_traceback = sys.exc_info()
         s += 'cat <<EOM\n%s:%s:%s\nEOM\n'%(exc_type,exc_value,exc_traceback)
+        s += 'EOFMM\n'
         s += 'exit 3;\n'
     return s
 
@@ -197,13 +587,11 @@ class debug_shellouttest_cases(unittest.TestCase):
             self.__logger = _LoggerObject()
             self.info('create logger')
 
-        if 'EXTARGSPARSE_JSON' in os.environ.keys():
-            del os.environ['EXTARGSPARSE_JSON']
         delone = True
         while delone:
             delone = False
             for k in os.environ.keys():
-                if k.startswith('EXTARGS_') or k.startswith('DEP_') or k == 'EXTARGSPARSE_JSON' or k.startswith('RDEP_'):
+                if k.startswith('EXTARGS_') or k.startswith('DEP_') or k == 'EXTARGSPARSE_' or k.startswith('RDEP_'):
                     del os.environ[k]
                     delone = True
                     break
@@ -255,7 +643,7 @@ class debug_shellouttest_cases(unittest.TestCase):
         return ok
 
     def __get_argsopt(self):
-        argsopt = NameSpace()
+        argsopt = NameSpaceEx()
         argsopt.caption = 'extargsparse4sh_test'
         return argsopt
 
@@ -316,6 +704,7 @@ class debug_shellouttest_cases(unittest.TestCase):
         }
         '''
         s = self.__get_bash_output(options=commandline,params=['-vvvv','-p','5000'])
+        self.info('get (%s)'%(s))
         self.__check_value_common(s,'port',5000)
         self.__check_value_common(s,'verbose',4)
         self.__check_value_list(s,'args',[])
@@ -580,27 +969,29 @@ def reset_extargs_logger(args):
     return
 
 def parse_inner(args):
+    global shell_env_string
+    global shell_orig_env_string
     reset_extargs_logger(args)
     commandline = ''
-    fin = sys.stdin
-    if args.input is not None:
-        fin = open(args.input,'r+')
-    for l in fin:
-        commandline += l
-    if fin != sys.stdin:
-        fin.close()
-    fin = None
+    commandline += read_file(args.input)
     i=0
-    for a in args.args:
-        logging.info('[%d]=%s'%(i,a))
+    for a in args.subnargs:
+        logging.info('subnargs[%d]=%s'%(i,a))
         i += 1        
-    s = format_bash_output(args,options=commandline,params=args.args)
+    outs = format_bash_output(args,options=commandline,params=args.subnargs,extoptionstr=args.options)
+    s = ''
+    if shell_env_string != shell_orig_env_string:
+        s += 'shopt -s extglob\n'%()
+        s += shell_env_string
+    s += '\n'    
+    s += outs
     sys.stdout.write('%s'%(s))
+    logging.info('out (%s)'%(s))
     return
 
 def cmd_change_test(args):
     reset_extargs_logger(args)
-    sys.argv[1:]=args.args
+    sys.argv[1:]=args.subnargs
     unittest.main(verbosity=args.verbose,failfast=args.failfast)
     return
 
@@ -611,7 +1002,7 @@ def cmd_change_release(args):
     macros = [[r'^##importdebugstart.*',r'^##importdebugend.*']]
     cmdchanges=[r'cmd_change_.*']
     repls = dict()
-    rtools.release_file('__main__',None,excludes,macros,cmdchanges,repls,None,None)
+    disttools.release_file('__main__',None,excludes,macros,cmdchanges,repls,None,None)
     return
 
 def test_handler(args,parser):
@@ -627,7 +1018,19 @@ def release_handler(args,parser):
     return
 
 def parse_handler(args,parser):
+    global shell_env_string
+    global shell_verbose_mode
+    global shell_bash_bin
+    global shell_orig_env_string
     set_log_level(args)
+    if args.declfile is not None:
+        shell_env_string = get_decl_string(read_file(args.declfile))
+    else:
+        shell_env_string = get_decl_string(args.declstr)
+    logging.info('declstr (%s)'%(len(shell_env_string)))
+    shell_orig_env_string = shell_env_string
+    shell_verbose_mode = args.verbose
+    shell_bash_bin = args.bash
     if args.catch:
         try:
             parse_inner(args)
@@ -643,15 +1046,30 @@ def parse_handler(args,parser):
     sys.exit(0)
     return
 
+def declare_handler(args,parser):
+    set_log_level(args)
+    outs = ''
+    outs = get_replace_string(read_file(args.input))
+    logging.info('outs (%s)'%(outs))
+    write_file(outs,args.output)
+    sys.exit(0)
+    return
+
 def main():
     inner_command='''
     {
         "verbose|v" : "+",
         "catch|C## to not catch the exception ##" : true,
         "input|i## to specify input default(stdin)##" : null,
+        "output|o## to sepcify outpu default(stdout)##" : null,
         "$caption## set caption ##" : "runcommand",
-        "release|R##to release test mode##" : false,
+        "release|R## to release test mode##" : false,
+        "priority|P## set priority##" : [],
         "failfast|f" : false,
+        "bash|b" : "/bin/bash",
+        "options|O## set options##"  : null,
+        "declstr|d## declare string of environ##" : "",
+        "declfile## declare file of environ##" : null,
         "parse<parse_handler>" : {
             "$" : "*"
         },
@@ -661,14 +1079,14 @@ def main():
         "release<release_handler>" : {
             "$" : "*"
         },
-        "retpattern<retpattern_handler>" : {
+        "declare<declare_handler>" : {
             "$" : 0
         }
     }
     '''
-    parser = ExtArgsParse()
+    parser = ExtArgsParse(None,priority=[])
     parser.load_command_line_string(inner_command)
-    args = parser.parse_command_line()
+    args = parser.parse_command_line(None)
     raise Exception('[%s] not supported subcommand'%(args.subcommand))
     return
 
