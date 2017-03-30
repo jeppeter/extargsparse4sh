@@ -11,6 +11,7 @@ test_verbose=0
 EXTARGSPARSE_LOGLEVEL=0
 DEBUG_LEVEL=2
 INFO_LEVEL=1
+ERROR_LEVEL=0
 
 source $scriptdir/extargsparse4sh
 
@@ -70,6 +71,24 @@ function Info()
 	return
 }
 
+
+function Error()
+{
+	local _fmt=$1
+	shift
+	local _backstack=0
+	if [ $# -gt 0 ]
+		then
+		_backstack=$1
+	fi
+	_backstack=`expr $_backstack \+ 1`
+	
+	if [ $test_verbose -ge $ERROR_LEVEL ]
+		then
+		__Debug "$_fmt" "$_backstack"
+	fi
+	return
+}
 
 
 function ErrorExit()
@@ -622,6 +641,183 @@ EOFMM
 	rm -f $tempfile
 }
 
+function debug_2_jsonfunc()
+{
+	local -a _params=($@)
+	local _optdest=$EXTARGSPARSE4SH_VARNAME
+	local _i
+	local _j
+	local _cnt
+	local _evalstr
+
+	_evalstr="unset ${_optdest}"
+	eval "${_evalstr}"
+	_evalstr="declare -a -g ${_optdest}"
+	eval "${_evalstr}"
+
+	_cnt=${#_params[@]}
+	_i=`expr $_cnt % 2`
+	if [ $_i -ne 0 ]
+		then
+		echo "error"
+		return
+	fi
+
+	_j=0
+	_i=0
+	if [ $_cnt -gt 0 ]
+		then
+		while [ $_i -lt $_cnt ]
+		do
+			_evalstr="${_optdest}[$_j]=${_params[$_i]}"
+			eval "${_evalstr}"
+			_j=`expr $_j \+ 1`
+			_i=`expr $_i \+ 2`
+		done
+	fi
+	return
+}
+
+function get_env_values()
+{
+	local _filter="$1"
+	if [ -n "$_filter" ]
+		then
+		set | grep -Po -e '^([\w]+)='   | sed 's/=//g' | grep -e "$_filter"
+	else
+		set | grep -Po -e '^([\w]+)='   | sed 's/=//g'
+	fi
+}
+
+function setUp()
+{
+	local _env
+	local _evalstr
+	for _env in $(get_env_values "^EXTARGS_.*")
+	do
+		_evalstr="unset ${_env}"
+		Info "${_evalstr}"
+		eval "${_evalstr}"
+	done
+
+	for _env in $(get_env_values "^EXTARGSPARSE_.*")
+	do
+		if [ ${_env} = "EXTARGSPARSE_LOGLEVEL" ] || [ ${_env} = "EXTARGSPARSE_LOGFMT" ]
+			then
+			true
+		else
+			_evalstr="unset ${_env}"
+			Info "${_evalstr}"
+			eval "${_evalstr}"
+		fi
+	done
+
+	for _env in $(get_env_values "^DEP_.*")
+	do
+		_evalstr="unset ${_env}"
+		Info "${_evalstr}"
+		eval "${_evalstr}"
+	done
+
+	for _env in $(get_env_values "^RDEP_.*")
+	do
+		_evalstr="unset ${_env}"
+		Info "${_evalstr}"
+		eval "${_evalstr}"		
+	done
+
+	return
+}
+
+function tearDown()
+{
+	return
+}
+
+function debug_upper_jsonfunc()
+{
+	local -a _params=($@)
+	local _optdest=$EXTARGSPARSE4SH_VARNAME
+	local _tempval
+
+	unset dep_string
+	declare -g "${_optdest}"
+
+	if [ ${#_params[@]} -gt 0 ]
+		then
+		_tempval=${_params[0]}
+		dep_string=`echo "$_tempval" | tr [:lower:] [:upper:]`
+	fi
+	return
+}
+
+function testcase_jsonfunc()
+{
+	local _env
+	local _jsonfile
+	local _depjsonfile
+	read -r -d '' OPTIONS<<EOFMM
+        {
+            "verbose|v" : "+",
+            "\$port|p" : {
+                "value" : 3000,
+                "type" : "int",
+                "nargs" : 1 , 
+                "helpinfo" : "port to connect"
+            },
+            "dep<subcommand>" : {
+                "list|l!jsonfunc=debug_2_jsonfunc!" : [],
+                "string|s!jsonfunc=debug_upper_jsonfunc!" : "s_var",
+                "\$<ARGS>" : "+"
+            }
+        }
+EOFMM
+	read -r -d '' EXTOPTS<<EOFMM
+        {
+            "jsonlong" : "jsonfile",
+            "priority" : ["ENV_CMD_JSON","ENV_CMD","ENV_SUBCMD_JSON"]
+        }
+EOFMM
+
+	read -r -d '' JSONCONTENT<<EOFMM
+	{
+		"dep" :	{
+			"list" : ["jsonval1","jsonval2"],
+			"string" : "jsonstring"
+		},
+		"port":6000,
+		"verbose":3
+	}
+EOFMM
+	
+	read -r -d '' DEPJSONCONTENT<<EOFMM
+	{
+		"list":["depjson1","depjson2"]
+	}
+EOFMM
+
+	_jsonfile=`mktemp --suffix .json`
+	_depjsonfile=`mktemp --suffix .json`
+
+	echo "$JSONCONTENT" >$_jsonfile
+	echo "$DEPJSONCONTENT" >$_depjsonfile
+	export EXTARGSPARSE_JSONFILE=$_jsonfile
+	export DEP_JSONFILE=$_depjsonfile
+	export DEP_STRING=newval
+	export DEP_LIST=[\"depenv1\",\"depenv2\"]
+
+	parse_command_line_ex "${OPTIONS}" "${EXTOPTS}" --jsonfile "$_jsonfile" dep ww
+	assert_int_equal "$verbose" 3
+	assert_int_equal "$port" 6000
+	assert_str_equal "$subcommand" "dep"
+	assert_arr_equal "dep_list" "inputarr" "${dep_list[@]}" "jsonval1"
+	assert_str_equal "$dep_string" "JSONSTRING"
+	assert_arr_equal "ARGS" "inputarr" "${ARGS[@]}" "ww"
+
+	rm -f $_jsonfile
+	rm -f $_depjsonfile
+}
+
 
 function get_testcase_funcnames()
 {
@@ -724,8 +920,10 @@ if [ $# -ne 0 ]
 			if [ "$cmpnames" = "$funcname" ]
 				then
 				founded=1
-				Info "$funcname"
+				Error "$funcname"
+				setUp
 				eval "$funcname"
+				tearDown
 				break
 			fi
 		done
@@ -737,8 +935,10 @@ if [ $# -ne 0 ]
 else
 	for funcname in $(get_testcase_funcnames)
 	do
-		Info "$funcname"
+		Error "$funcname"
+		setUp
 		eval "$funcname"
+		tearDown
 	done
 fi
 

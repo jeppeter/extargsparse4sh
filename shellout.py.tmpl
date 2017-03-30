@@ -239,80 +239,16 @@ def format_tab_line(s,tabs=0):
     return rets
 
 
-def shell_optparse(args,validx,keycls,params):
+def shell_function_callout(function_code,funcname):
     global shell_env_string
-    global shell_verbose_mode
     global shell_bash_bin
-    if keycls.attr is None or keycls.attr.shellfunc is None:
-        # this is the 
-        return 0
+    global shell_verbose_mode
     devnullfd = None
     if shell_verbose_mode < 3:
         devnullfd = open(os.devnull,'w')
-
     format_out_lines = 'shopt -s extglob\n%s\n'%(shell_env_string)
-    funcname = get_random_function_name(shell_env_string)
-    function_code = ''
-    function_code += format_tab_line('%s()'%(funcname))
-    function_code += format_tab_line('{')
-    if keycls.type == 'list':
-        function_code += format_tab_line('local _idx',1)
-        function_code += format_tab_line('local _curelm',1)
-    if keycls.type == 'list':
-        function_code += format_tab_line('unset %s'%(keycls.varname),1)
-        function_code += format_tab_line('declare -g -a %s'%(keycls.varname),1)
-        logging.info('keycls.optdest [%s]'%(keycls.optdest))
-        if getattr(args,keycls.optdest,None) is not None:
-            idx = 0
-            for c in getattr(args,keycls.optdest,[]):
-                function_code += format_tab_line('%s[%d]=%s'%(keycls.varname,idx,c),1)
-                idx += 1
-    else:
-        function_code += format_tab_line('unset %s'%(keycls.varname),1)
-        function_code += format_tab_line('declare -g %s'%(keycls.varname),1)
-        if keycls.type == 'bool':
-            value = getattr(args,keycls.optdest,False)
-            if value:
-                function_code += format_tab_line('%s=1'%(keycls.varname),1)
-            else:
-                function_code += format_tab_line('%s=0'%(keycls.varname),1)
-        elif keycls.type == 'string':
-            value = getattr(args,keycls.optdest,None)
-            if value is not None:
-                function_code += format_tab_line('%s=%s'%(keycls.varname,value),1)
-        elif keycls.type == 'int' or keycls.type == 'count' or keycls.type == 'float':
-            value = getattr(args,keycls.optdest,None)
-            if value is not None:
-                function_code += format_tab_line('%s=%s'%(keycls.varname,value),1)
-    function_code += format_tab_line('',1)
-    function_code += format_tab_line('EXTARGSPARSE4SH_LONGOPT="%s"'%(keycls.longopt),1)
-    if keycls.shortopt is not None:
-        function_code += format_tab_line('EXTARGSPARSE4SH_SHORTOPT="%s"'%(keycls.shortopt),1)
-    else:
-        function_code += format_tab_line('EXTARGSPARSE4SH_SHORTOPT=',1)
-    function_code += format_tab_line('EXTARGSPARSE4SH_VARNAME="%s"'%(keycls.varname),1)
-
-    callstr = '%s "%s"'%(keycls.attr.shellfunc,validx)
-    for c in params:
-        callstr += ' "%s"'%(c)
-    function_code += format_tab_line(callstr,1)
-
-    # now we should make sure the test case
-    if keycls.type == 'list':
-        function_code += format_tab_line('_idx=0',1)
-        function_code += format_tab_line('for _curelm in "${%s[@]}"'%(keycls.varname),1)
-        function_code += format_tab_line('do',1)
-        function_code += format_tab_line('echo "%s[$_idx]=$_curelm"'%(keycls.varname),2)
-        function_code += format_tab_line('_idx=`expr $_idx \+ 1`',2)
-        function_code += format_tab_line('done',1)
-    else:
-        function_code += format_tab_line('%s=$%s'%(keycls.varname,keycls.varname),1)
-    function_code += format_tab_line('echo ""',1)
-    function_code += format_tab_line('return',1)
-    function_code += format_tab_line('}',0)
-
     logging.info('function_code (%s)'%(function_code))
-    logging.info('format_out_lines (%s)'%(format_out_lines))
+    #logging.info('format_out_lines (%s)'%(format_out_lines))
 
     p = subprocess.Popen(shell_bash_bin,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=devnullfd,shell=False)  
     outhdl = OutputCollect(p.stdout)
@@ -329,13 +265,15 @@ def shell_optparse(args,validx,keycls,params):
         p.stdin.write(bytes('declare\n','UTF-8'))
     p.stdin.close()
     # we get lines
-    outlines = outhdl.get_lines()
+    retlines = outhdl.get_lines()
     outhdl = None
     if devnullfd is not None:
         devnullfd.close()
     devnullfd = None
+    return retlines
 
-    # now pass the 
+def shell_get_value(retlines,keycls,getnumber):
+    global shell_env_string
     idx = 0
     numret = 0
     intexpr = re.compile('^(\d+)$')
@@ -348,9 +286,10 @@ def shell_optparse(args,validx,keycls,params):
     argsvalue = None
     if keycls.type == 'list':
         argsvalue = []
-    for l in outlines:  
+    for l in retlines:  
         idx += 1
-        if idx == 1:
+        if idx == 1 and getnumber :
+            logging.info('l [%s]'%(l.rstrip('\r\n')))
             if intexpr.match(l.rstrip('\r\n')):
                 numret = int(l.rstrip('\r\n'))
             elif l.rstrip('\r\n') == 'error':
@@ -358,6 +297,8 @@ def shell_optparse(args,validx,keycls,params):
         elif envstarted == 0 and l.rstrip('\r\n') == '':
             shell_env_string = ''
             envstarted = 1
+        elif envstarted == 0 and l.rstrip('\r\n') == 'error':
+            raise Exception('get error')
         elif envstarted == 0:
             # it is the value one
             startename = '%s'%(keycls.varname)
@@ -406,73 +347,147 @@ def shell_optparse(args,validx,keycls,params):
         else:
             # that is the shell options
             shell_env_string += l
-    logging.info('[%s]=(%s)'%(keycls.optdest,argsvalue))
-    logging.info('shell_env_string (%s)'%(shell_env_string))
-    setattr(args,keycls.optdest,argsvalue)
-    if devnullfd is not None:
-        devnullfd.close()
-    devnullfd = None
-    return numret
+    logging.info('numret [%s] argsvalue(%s)'%(numret,argsvalue))
+    return numret,argsvalue
 
-def shell_helpfunc(keycls):
-    global shell_verbose_mode
-    global shell_env_string
-    global shell_bash_bin
-    if keycls.attr is None or keycls.attr.shell_opthelp is None:
-        return ''
-    format_out_lines = 'shopt -s extglob\n%s\n'%(shell_env_string)
+def format_function_code(callstr,keycls,args=None):
     funcname = get_random_function_name(shell_env_string)
     function_code = ''
-    function_code += format_tab_line('%s()'%(funcname),0)
-    function_code += format_tab_line('{',0)
+    function_code += format_tab_line('%s()'%(funcname))
+    function_code += format_tab_line('{')
+    if args is not None:
+        if keycls.type == 'list':
+            function_code += format_tab_line('local _idx',1)
+            function_code += format_tab_line('local _curelm',1)
+        if keycls.type == 'list':
+            function_code += format_tab_line('unset %s'%(keycls.varname),1)
+            function_code += format_tab_line('declare -g -a %s'%(keycls.varname),1)
+            logging.info('keycls.optdest [%s]'%(keycls.varname))
+            value = getattr(args,keycls.optdest,None)
+            if value is not None:
+                idx = 0
+                for c in value:
+                    function_code += format_tab_line('%s[%d]=%s'%(keycls.varname,idx,c),1)
+                    idx += 1
+        else:
+            function_code += format_tab_line('unset %s'%(keycls.varname),1)
+            function_code += format_tab_line('declare -g %s'%(keycls.varname),1)
+            if keycls.type == 'bool':
+                value = getattr(args,keycls.optdest,None)
+                if value is not None:
+                    if value:
+                        function_code += format_tab_line('%s=1'%(keycls.varname),1)
+                    else:
+                        function_code += format_tab_line('%s=0'%(keycls.varname),1)
+            elif keycls.type == 'string':
+                value = getattr(args,keycls.optdest,None)
+                if value is not None:
+                    function_code += format_tab_line('%s="%s"'%(keycls.varname,quote_string(value)),1)
+            elif keycls.type == 'int' or keycls.type == 'count' or keycls.type == 'float':
+                value = getattr(args,keycls.optdest,None)
+                if value is not None:
+                    function_code += format_tab_line('%s=%s'%(keycls.varname,value),1)
+    function_code += format_tab_line('',1)
     function_code += format_tab_line('EXTARGSPARSE4SH_LONGOPT="%s"'%(keycls.longopt),1)
     if keycls.shortopt is not None:
         function_code += format_tab_line('EXTARGSPARSE4SH_SHORTOPT="%s"'%(keycls.shortopt),1)
     else:
         function_code += format_tab_line('EXTARGSPARSE4SH_SHORTOPT=',1)
     function_code += format_tab_line('EXTARGSPARSE4SH_VARNAME="%s"'%(keycls.varname),1)
-    function_code += format_tab_line('%s'%(keycls.attr,shell_opthelp),1)
+
+    function_code += format_tab_line(callstr,1)
+
+    # now we should make sure the test case
+    if args is not None:
+        if keycls.type == 'list':
+            function_code += format_tab_line('_idx=0',1)
+            function_code += format_tab_line('for _curelm in "${%s[@]}"'%(keycls.varname),1)
+            function_code += format_tab_line('do',1)
+            function_code += format_tab_line('echo "%s[$_idx]=$_curelm"'%(keycls.varname),2)
+            function_code += format_tab_line('_idx=`expr $_idx \+ 1`',2)
+            function_code += format_tab_line('done',1)
+        else:
+            function_code += format_tab_line('echo "%s=$%s"'%(keycls.varname,keycls.varname),1)
     function_code += format_tab_line('echo ""',1)
     function_code += format_tab_line('return',1)
     function_code += format_tab_line('}',0)
+    return function_code,funcname
 
+def shell_optparse(args,validx,keycls,params):
+    global shell_env_string
+    global shell_verbose_mode
+    global shell_bash_bin
+    if keycls.attr is None or keycls.attr.shellfunc is None:
+        # this is the 
+        return 0
+    callstr = '%s "%s"'%(keycls.attr.shellfunc,validx)
+    for c in params:
+        callstr += ' "%s"'%(quote_string(c))
+    function_code , funcname = format_function_code(callstr,keycls,args)
     logging.info('function_code (%s)'%(function_code))
-    devnullfd = None
-    if shell_verbose_mode < 3:
-        devnullfd = open(os.devnull,'w')
+    retlines = shell_function_callout(function_code,funcname)
+    numret,argsvalue = shell_get_value(retlines,keycls,True)
+    setattr(args,keycls.optdest,argsvalue)
+    return numret
 
-    p = subprocess.Popen(shell_bash_bin,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=devnullfd,shell=False)  
-    outhdl = OutputCollect(p.stdout)
-    # now to give the environment
-    if sys.version[0] == '2':
-        p.stdin.write(format_out_lines)
-        p.stdin.write(function_code)
-        p.stdin.write('%s'%(funcname))
-        p.stdin.write('declare')
-    else:
-        p.stdin.write(bytes(format_out_lines,'UTF-8'))
-        p.stdin.write(bytes(function_code,'UTF-8'))
-        p.stdin.write(bytes('%s\n'%(funcname),'UTF-8'))
-        p.stdin.write(bytes('declare\n','UTF-8'))
-    p.stdin.close()
-    # we get lines
-    outlines = outhdl.get_lines()
-    outhdl = None
-    retlines = ''
+def shell_helpfunc(keycls):
+    global shell_env_string
+    if keycls.attr is None or keycls.attr.shell_opthelp is None:
+        return ''
+    callstr = '%s'%(keycls.attr.shell_opthelp)
+    function_code , funcname = format_function_code(callstr,keycls,None)
+    logging.info('function_code (%s)'%(function_code))
+    retlines = shell_function_callout(function_code,funcname)
+    helpinfo = ''
     envstarted = 0
-    for l in outlines:
-        if envstarted == 0 and l.rstrip('\r\n') == '':
-            envstarted = 1
-            shell_env_string = ''
-        elif envstarted == 0:
-            retlines += l.rstrip('\r\n')
+    for l in retlines:
+        if envstarted == 0:
+            if l.rstrip('\r\n') == '':
+                envstarted = 1
+                shell_env_string = ''
+            else:
+                helpinfo += l.rstrip('\r\n')
         else:
             shell_env_string += l
-    logging.info('retlines [%s]'%(retlines))
-    if devnullfd is not None:
-        devnullfd.close()
-    devnullfd = None
-    return retlines
+    return helpinfo
+
+
+def shell_jsonfunc(args,keycls,value):
+    global shell_verbose_mode
+    global shell_env_string
+    global shell_bash_bin
+    if keycls.attr is None or keycls.attr.shell_jsonfunc is None:
+        return
+    callstr = '%s '%(keycls.attr.shell_jsonfunc)
+    idx = 0
+    if keycls.type == 'string' or keycls.type == 'unicode':
+        if value is not None:
+            callstr += '"%s"'%(quote_string(value))
+    elif keycls.type == 'float' or keycls.type == 'int' or keycls.type == 'long' or keycls.type == 'count':
+        if value is not None:
+            callstr += '%s'%(value)
+    elif keycls.type == 'bool':
+        if value is not None:
+            if value :
+                callstr += '1'
+            else:
+                callstr += '0'
+    elif keycls.type == 'list':
+        if value is not None:            
+            for c in value:
+                callstr += ' '
+                callstr += '"%s"'%(quote_string(c))
+    elif keycls.type == 'jsonfile':
+        if value is not None:
+            callstr += '"%s"'%(quote_string(value))
+    else:
+        raise Exception('[%s] not supported type'%(keycls.type))
+    function_code , funcname = format_function_code(callstr,keycls,args)
+    logging.info('function_code (%s)'%(function_code))
+    retlines = shell_function_callout(function_code,funcname)
+    numret,argsvalue = shell_get_value(retlines,keycls,False)
+    setattr(args,keycls.optdest,argsvalue)
+    return
 
 
 def get_decl_string(l):
@@ -544,6 +559,12 @@ def __set_optparse_function(argsopt,parser,cmdname=None):
                     opt.attr.shell_opthelp = opt.attr.opthelp
                     opt.attr.opthelp = 'shell_opthelp'
 
+            if opt.attr is not None and opt.attr.jsonfunc is not None:
+                if opt.attr.shell_jsonfunc is None:
+                    logging.info('set [%s] for shell_jsonfunc'%(opt.optdest))
+                    opt.attr.shell_jsonfunc = opt.attr.jsonfunc
+                    opt.attr.jsonfunc = 'shell_jsonfunc'
+
     subcmds = parser.get_subcommands(cmdname)
     if subcmds is not None:
         for c in subcmds:
@@ -559,13 +580,58 @@ def set_optparse_function(argsopt,parser):
     __set_optparse_function(argsopt,parser)
     return
 
+def get_full_trace_back(trback,tabs=1,cnt=0):
+    s = ''
+    frm = getattr(trback,'tb_frame',None)
+    if frm is not None:
+        code = getattr(frm,'f_code',None)
+        if code is not None:
+            s += ' ' * tabs * 4
+            s += '[%d][%s:%s:%s]\n'%(cnt,code.co_filename,code.co_name,frm.f_lineno)
+            ntrace = getattr(trback,'tb_next',None)
+            if ntrace is not None:
+                s += get_full_trace_back(ntrace,tabs,cnt+1)
+    return s
+
+def get_exc_info():
+    trback = sys.exc_info()[2]
+    exceptname = sys.exc_info()[1]
+    s = ''
+    s += 'exception %s:\n'%(exceptname)
+    s +='trace back:\n'
+    s += get_full_trace_back(trback,1,0)
+    return s
 
 def format_bash_output(argsopt,options,params=None,extoptionstr=None):
     s = ''
     try:
-        extoptions = ExtArgsOptions(extoptionstr)
+        priority=  None
+        extdict = None
+        if extoptionstr is not None:
+            try:
+                extdict = json.loads(extoptionstr)
+                if 'priority' in extdict.keys() and isinstance(extdict['priority'],list):
+                    priority = []
+                    for c in extdict['priority']:
+                        if c == 'SUBCMD_JSON':
+                            priority.append(SUB_COMMAND_JSON_SET)
+                        elif c == 'CMD_JSON':
+                            priority.append(COMMAND_JSON_SET)
+                        elif c == 'ENV_SUBCMD_JSON':
+                            priority.append(ENV_SUB_COMMAND_JSON_SET)
+                        elif c == 'ENV_CMD_JSON':
+                            priority.append(ENV_COMMAND_JSON_SET)
+                        elif c == 'ENV_CMD':
+                            priority.append(ENVIRONMENT_SET)
+                        else:
+                            logging.error('not recognize priority [%s]'%(c))
+                    del extdict['priority']
+            except:
+                extdict = None
+                pass
+        extoptions = ExtArgsOptions(extdict)
         extoptions.prog = argsopt.caption
-        parser = ExtArgsParse(extoptions)
+        parser = ExtArgsParse(extoptions,priority)
         parser.load_command_line_string(options)
         logging.info('before set parser')
         set_optparse_function(argsopt,parser)
@@ -575,7 +641,7 @@ def format_bash_output(argsopt,options,params=None,extoptionstr=None):
     except:
         s = 'cat <<EOFMM\n'
         exc_type, exc_value, exc_traceback = sys.exc_info()
-        s += 'cat <<EOM\n%s:%s:%s\nEOM\n'%(exc_type,exc_value,exc_traceback)
+        s += 'cat <<EOM\n%s:%s:%s\n%sEOM\n'%(exc_type,exc_value,exc_traceback,get_exc_info())
         s += 'EOFMM\n'
         s += 'exit 3;\n'
     return s
@@ -959,6 +1025,8 @@ def set_log_level(args):
     elif args.verbose >= 1 :
         loglvl = logging.WARN
     # we delete old handlers ,and set new handler
+    if logging.root is not None and len(logging.root.handlers) > 0:
+        logging.root.handlers = []
     logging.basicConfig(level=loglvl,format='%(asctime)s:%(filename)s:%(funcName)s:%(lineno)d\t%(message)s')
     return
 
