@@ -430,7 +430,7 @@ def shell_optparse(args,validx,keycls,params):
     setattr(args,keycls.optdest,argsvalue)
     return numret
 
-def shell_helpfunc(keycls):
+def shell_opthelp(keycls):
     global shell_env_string
     if keycls.attr is None or keycls.attr.shell_opthelp is None:
         return ''

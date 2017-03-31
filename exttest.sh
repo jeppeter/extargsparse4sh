@@ -678,6 +678,135 @@ function debug_2_jsonfunc()
 	return
 }
 
+function get_template_name()
+{
+	local _retval
+	local _n
+	_retval=`mktemp --dry-run FXXXXXXXXXX`
+	_n=`basename "$_retval"`
+	_n=`echo "$_n" | sed 's/^tmp\.//'`
+	echo "$_n"
+	return
+}
+
+function get_temp_not_used()
+{
+	local _origstr="$1"
+	local _filterstr
+	local _tmpstr
+	while [ 1 -eq 1 ]
+	do
+		_tmpstr=$(get_template_name)
+		_filterstr=`echo "$_origstr" | grep -Po -e $_tmpstr`
+		if [ -z "$_filterstr" ]
+			then
+			echo "$_tmpstr"
+			return
+		fi
+	done
+	return
+}
+
+function debug_opthelp_set()
+{
+	echo "opthelp function set [$EXTARGSPARSE4SH_LONGOPT]"
+	return
+}
+
+
+function testcase_usage_opthelp()
+{
+	local _tempfile
+	local _temp2file
+	local _curcontent
+	local _filtercon
+	local _optname
+	local _opteof
+	local _extname
+	local _exteof
+	local _hasopthelp
+	read -r -d '' OPTIONS<<EOFMM
+    {
+        "verbose|v" : "+",
+        "kernel|K" : "/boot/",
+        "initrd|I" : "/boot/",
+        "pair|P!optparse=debug_set_2_args;opthelp=debug_opthelp_set!" : [],
+        "encryptfile|e" : null,
+        "encryptkey|E" : null,
+        "setupsectsoffset" : 663,
+        "ipxe" : {
+            "\\\$" : "+"
+        }
+    }
+EOFMM
+	read -r -d '' EXTOPTS<<EOFMM
+	{
+		"longprefix" : "++",
+		"shortprefix" : "+",
+		"helplong" : "usage",
+		"helpshort" : "?",
+		"jsonlong" : "jsonfile"
+	}
+EOFMM
+
+	_tempfile=`mktemp --suffix=.sh`
+	_temp2file=`mktemp --suffix=.sh`
+	echo "shopt -s extglob" >"$_tempfile"
+	declare >> "$_tempfile"
+
+	_curcontent=`cat $_tempfile`
+
+	_optname=$(get_temp_not_used "$_curcontent")
+	cat "$_tempfile" > "$_temp2file"
+	echo "read -r -d '' ${_optname}<<EOFMM" >>"$_temp2file"
+	echo "${OPTIONS}" >> "$_temp2file"
+	echo "EOFMM" >>"$_temp2file"
+	_curcontent=`cat $_temp2file`
+	_opteof=$(get_temp_not_used "$_curcontent")
+
+	# to make optname
+	echo "read -r -d '' ${_optname}<<${_opteof}" >> "$_tempfile"
+	echo "${OPTIONS}" >> "$_tempfile"
+	echo "${_opteof}" >> "$_tempfile"
+
+	cat "$_tempfile" > "$_temp2file"
+	_curcontent=`cat $_temp2file`
+	_extname=$(get_temp_not_used "$_curcontent")
+	echo "read -r -d '' ${_extname}<<EOFMM" >>"$_temp2file"
+	echo "${EXTOPTS}" >>"$_temp2file"
+	echo "EOFMM" >>"$_temp2file"
+	_curcontent=`cat $_temp2file`
+	_exteof=$(get_temp_not_used "$_curcontent")
+
+	# to make the ext name 
+	echo "read -r -d '' ${_extname}<<${_exteof}" >>"$_tempfile"
+	echo "${EXTOPTS}" >>"$_tempfile"
+	echo "${_exteof}" >>"$_tempfile"
+
+
+	echo "parse_command_line_ex \"\$${_optname}\" \"\$${_extname}\" \"+?\"" >>"$_tempfile"
+
+	if [ $test_verbose -gt 0 ]
+		then
+		_curcontent=`$BASH "$_tempfile"`
+	else
+		_curcontent=`$BASH "$_tempfile" 2>/dev/null`
+	fi
+	_hasopthelp=0
+	Info "get content [$_curcontent]"
+	_filtercon=`echo "$_curcontent" | grep 'opthelp function set'`
+	Info "get content [$_filtercon]"
+	if [ -n "$_filtercon" ]
+		then
+		_hasopthelp=1
+	fi
+
+	Info "tempfile [$_tempfile]"
+	assert_int_equal "$_hasopthelp" 1
+	rm -f "$_tempfile" "$_temp2file"
+
+}
+
 function get_env_values()
 {
 	local _filter="$1"
