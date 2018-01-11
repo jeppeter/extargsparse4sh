@@ -126,7 +126,7 @@ __check_in_list()
         fi
         _i=`expr $_i \+ 1`
     done
-    return -1
+    return 255
 }
 
 __check_file_operator()
