@@ -947,6 +947,50 @@ EOFMM
 	rm -f $_depjsonfile
 }
 
+function testcase_usage_format()
+{
+    local _OPTIONS
+    local _EXTOPTS
+    local _str
+    read -r -d '' _OPTIONS<<EOFMM
+        {
+            "verbose|v" : "+",
+            "\$port|p" : {
+                "value" : 3000,
+                "type" : "int",
+                "nargs" : 1 , 
+                "helpinfo" : "port to connect"
+            },
+            "dep<subcommand>##[cc]... dep handle usage##" : {
+                "list|l!jsonfunc=debug_2_jsonfunc!" : [],
+                "string|s!jsonfunc=debug_upper_jsonfunc!" : "s_var",
+                "\$<ARGS>" : "+"
+            },
+            "rdep<subcommand>##[dd]... rdep handle usage##" : {
+                "$" : "*"
+            }
+        }
+EOFMM
+    read -r -d '' _EXTOPTS<<EOFMM
+        {
+            "prog"  : "t.sh",
+            "jsonlong" : "jsonfile",
+            "priority" : ["ENV_CMD_JSON","ENV_CMD","ENV_SUBCMD_JSON"]
+        }
+EOFMM
+    _str=$(parse_command_line_ex "${_OPTIONS}" "${_EXTOPTS}"  dep -h)
+    $PYTHON $scriptdir/tstfunc.py testfindline  -- "t.sh" 0 "$_str"
+    assert_int_equal $? 0
+    $PYTHON $scriptdir/tstfunc.py testfindline  -- "\[cc\]... dep handle usage" 0 "$_str"
+    assert_int_equal $? 0
+
+    _str=$(parse_command_line_ex "${_OPTIONS}" "${_EXTOPTS}"  rdep -h)
+    $PYTHON $scriptdir/tstfunc.py testfindline  -- "t.sh" 0 "$_str"
+    assert_int_equal $? 0
+    $PYTHON $scriptdir/tstfunc.py testfindline  -- "\[dd\]... rdep handle usage" 0 "$_str"
+    assert_int_equal $? 0
+}
+
 
 function get_testcase_funcnames()
 {

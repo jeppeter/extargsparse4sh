@@ -610,6 +610,7 @@ def format_bash_output(argsopt,options,params=None,extoptionstr=None):
         if extoptionstr is not None:
             try:
                 extdict = json.loads(extoptionstr)
+                logging.info('extoptionstr [%s] extdict [%s]'%(extoptionstr,extdict))
                 if 'priority' in extdict.keys() and isinstance(extdict['priority'],list):
                     priority = []
                     for c in extdict['priority']:
@@ -630,7 +631,8 @@ def format_bash_output(argsopt,options,params=None,extoptionstr=None):
                 extdict = None
                 pass
         extoptions = ExtArgsOptions(extdict)
-        extoptions.prog = argsopt.caption
+        logging.info('extoptions [%s]'%(extoptions))
+        #extoptions.prog = argsopt.caption
         parser = ExtArgsParse(extoptions,priority)
         parser.load_command_line_string(options)
         logging.info('before set parser')
@@ -1123,6 +1125,18 @@ def declare_handler(args,parser):
     sys.exit(0)
     return
 
+def formatprog_handler(args, parser):
+    set_log_level(args)
+    if args.options is None:
+        raise Exception('no options specified')
+    odict = json.loads(args.options)
+    if args.subnargs is not None and len(args.subnargs) > 0:
+        if 'prog' not in odict.keys():
+            odict['prog'] = args.subnargs[0]
+    sys.stdout.write('%s\n'%(json.dumps(odict)))
+    sys.exit(0)
+    return
+
 def main():
     inner_command='''
     {
@@ -1149,6 +1163,9 @@ def main():
         },
         "declare<declare_handler>" : {
             "$" : 0
+        },
+        "formatprog<formatprog_handler>" : {
+            "$" : "?"
         }
     }
     '''

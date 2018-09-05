@@ -29,17 +29,48 @@ read -r -d '' EXTARGSPARSE <<EXTEOF
 %EXTARGSPARSE%
 EXTEOF
 
+function get_caller_prog()
+{
+    local _stkidx=1
+    local _callidx=0
+    local _file
+    local _func
+    local _retfile=""
+    local _line
+    while [ 1 ]
+    do
+        _file=${BASH_SOURCE[$_stkidx]}
+        _func=${FUNCNAME[$_stkidx]}
+        _line=${BASH_LINENO[$_callidx]}
+        if [  "$_func"  = "main" ]
+            then
+            _retfile=$_file
+            _retfile=`basename $_retfile`
+            break
+        fi
+        #echo "[$_stkidx] file [$_file] func [$_func] line [$_line]"
+        _stkidx=`expr $_stkidx \+ 1`
+        _callidx=`expr $_stkidx - 1`
+    done
+    echo "$_retfile"
+    return
+}
+
+
 parse_command_line_ex()
 {
     local _jsonparse="$1"
     local _extoptionstr="$2"
+    local _realextopt=""
     local _parsestr
     local _vermode=""
+    local _caller=""
     local _i
     local _declfile=""
     shift
     shift
 
+    _caller=$(get_caller_prog)
 
     if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -ge 2 ]
         then
@@ -52,9 +83,16 @@ parse_command_line_ex()
         done
     fi
 
+    if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -ge 2 ]
+        then
+        echo "_caller [$_caller]" >&2
+    fi
+
+    _realextopt=`$PYTHON -c "$EXTARGSPARSE" $_vermode -O "$_extoptionstr" formatprog "$_caller"`
+
     _declfile=`mktemp`
     declare | $PYTHON -c "$EXTARGSPARSE" $_vermode  declare -o $_declfile
-    _parsestr=$(echo "$_jsonparse" | $PYTHON -c "$EXTARGSPARSE" $_vermode  --options "$_extoptionstr" --declfile "$_declfile" --caption "$0"  parse -- "$@" )
+    _parsestr=$(echo "$_jsonparse" | $PYTHON -c "$EXTARGSPARSE" $_vermode  --options "$_realextopt" --declfile "$_declfile" --caption "$0"  parse -- "$@" )
     #_parsestr=$(echo "$_jsonparse" | $PYTHON -c "$EXTARGSPARSE" $_vermode  --caption "$0"  parse -- "$@" )
     if [ -n "$EXTARGSPARSE_LOGLEVEL" ] && [ $EXTARGSPARSE_LOGLEVEL -ge 2 ]
        then
