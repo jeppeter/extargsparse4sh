@@ -2,6 +2,7 @@
 > [extargsparse](https://github.com/jeppeter/extargsparse) transport for bash
 
 ### Release History
+* Sep 5th 2018 Release 0.3.6 to make help information ok
 * Mar 31st 2017 Release 0.3.4 to make opthelp function test ok
 * Mar 27th 2017 Release 0.2.8 to keep progressing with callback optparse in extargsparse4sh
 * Jan 31st 2017 Release 0.2.6 to fixup bug in the extargsparse when environment for count type
