@@ -22,7 +22,12 @@ fi
 
 if [ -z "$PYTHON" ]
     then
-    PYTHON=python
+    PYTHON=`which python`
+fi
+
+if [ -z "$PYTHON" ]
+    then
+    PYTHON=`which python3`
 fi
 
 read -r -d '' EXTARGSPARSE <<EXTEOF

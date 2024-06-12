@@ -148,7 +148,7 @@ def release_copy_own(tempf,tofile=None):
     cmd += __get_tab_line(r'#! /usr/bin/env python')
     cmd += copyfile_python_command
     pythonfile = os.path.abspath(pythonfile)
-    runcmd = 'python %s %s %s %s'%(pythonfile,tempf,tofile,touchfile)
+    runcmd = '%s %s %s %s %s'%(sys.executable,pythonfile,tempf,tofile,touchfile)
     with open(pythonfile,'w+') as f:
         #logging.info('cmd %s'%(cmd))
         f.write(cmd)

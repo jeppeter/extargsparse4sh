@@ -16,7 +16,10 @@ Q=
 endif
 
 ifeq (${P},)
-PYTHON:=$(shell which python)
+PYTHON=$(shell which python)
+ifeq (${PYTHON},)
+PYTHON=$(shell which python3)
+endif
 else
 PYTHON:=${P}
 endif
@@ -37,10 +40,10 @@ check_shellout:${TOPDIR}/shellout.py
 	${Q}(${PYTHON} ${TOPDIR}/insertcode -i ${TOPDIR}/echocode.tmpl bashstring $< | /bin/bash | diff -B - $< ) || ( echo "can not check $<" ; exit 4)
 
 
-${TOPDIR}/shellout.py:debug
+${TOPDIR}/shellout.py:_debug
 	${Q}${PYTHON} shellout.py release && (  while [ 1 ];do   if [ -f shellout.py.touched ] ; then rm -f shellout.py.touched ;  break ;  fi ;  ${PYTHON}  -c 'import time;time.sleep(0.1)'; done)
 
-debug:shellout.py.tmpl
+_debug:shellout.py.tmpl
 	${Q}${PYTHON} format_template.py -i shellout.py.tmpl -P "%EXTARGSPARSE_STRIP_CODE%" -r "keyparse\.=" -c ExtArgsParse.get_subcommands -c ExtArgsParse.get_cmdopts -E "^debug_.*" -m "[r'^##extractstart.*',r'^##extractend.*']" -m "[r'^##importdebugstart.*',r'^##importdebugend.*']" -vvvv -o shellout.py extargsparse.__key__ extargsparse.__lib__
 	${Q}${PYTHON} shellout.py ${VERBOSE_OPTION} test || (echo "can not run test ok" >&2 ; exit 5)
 
