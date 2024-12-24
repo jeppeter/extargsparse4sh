@@ -13,7 +13,7 @@ import disttools
 
 def check_method_callback(key,val,ctx):
 	for k in ctx.checkmethod:
-		sarr = re.split('\.',k)
+		sarr = re.split('\\.',k)
 		if key == sarr[0] and len(sarr) > 1:
 			# now check whether it is a method
 			if sarr[1] not in dir(val):
@@ -34,7 +34,7 @@ def set_log_level(args):
     return
 
 def get_ver_tuple(ver):
-	sarr = re.split('\.',ver)
+	sarr = re.split('\\.',ver)
 	i = 0
 	while i < len(sarr):
 		sarr[i] = int(sarr[i])

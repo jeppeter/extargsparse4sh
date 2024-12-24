@@ -282,10 +282,10 @@ def shell_optparse(args,validx,keycls,params):
     # now pass the 
     idx = 0
     numret = 0
-    intexpr = re.compile('^(\d+)$')
-    listexpr = re.compile('%s\[([\d]+)\]=(.*)'%(keycls.varname))
-    intvarexpr = re.compile('%s=([\d]+)'%(keycls.varname))
-    floatvarexpr = re.compile('%s=([\d]+(\.[\d]+)?)'%(keycls.varname))
+    intexpr = re.compile('^(\\d+)$')
+    listexpr = re.compile('%s\\[([\\d]+)\\]=(.*)'%(keycls.varname))
+    intvarexpr = re.compile('%s=([\\d]+)'%(keycls.varname))
+    floatvarexpr = re.compile('%s=([\\d]+(\\.[\\d]+)?)'%(keycls.varname))
     boolvarexpr = re.compile('%s=([01])'%(keycls.varname))
     strvarexpr = re.compile('%s=(.*)'%(keycls.varname))
     envstarted = 0

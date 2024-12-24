@@ -276,10 +276,10 @@ def shell_get_value(retlines,keycls,getnumber):
     global shell_env_string
     idx = 0
     numret = 0
-    intexpr = re.compile('^(\d+)$')
-    listexpr = re.compile('%s\[([\d]+)\]=(.*)'%(keycls.varname))
-    intvarexpr = re.compile('%s=([\d]+)'%(keycls.varname))
-    floatvarexpr = re.compile('%s=([\d]+(\.[\d]+)?)'%(keycls.varname))
+    intexpr = re.compile('^(\\d+)$')
+    listexpr = re.compile('%s\\[([\\d]+)\\]=(.*)'%(keycls.varname))
+    intvarexpr = re.compile('%s=([\\d]+)'%(keycls.varname))
+    floatvarexpr = re.compile('%s=([\\d]+(\\.[\\d]+)?)'%(keycls.varname))
     boolvarexpr = re.compile('%s=([01])'%(keycls.varname))
     strvarexpr = re.compile('%s=(.*)'%(keycls.varname))
     envstarted = 0
@@ -404,7 +404,7 @@ def format_function_code(callstr,keycls,args=None):
             function_code += format_tab_line('for _curelm in "${%s[@]}"'%(keycls.varname),1)
             function_code += format_tab_line('do',1)
             function_code += format_tab_line('echo "%s[$_idx]=$_curelm"'%(keycls.varname),2)
-            function_code += format_tab_line('_idx=`expr $_idx \+ 1`',2)
+            function_code += format_tab_line('_idx=`expr $_idx \\+ 1`',2)
             function_code += format_tab_line('done',1)
         else:
             function_code += format_tab_line('echo "%s=$%s"'%(keycls.varname,keycls.varname),1)
@@ -520,7 +520,7 @@ def bash_output(argopts,parser,args):
             s += '%s=%s\n'%(keycls.function,args.subcommand)
             argopts.hasoutput.append(keycls.function)
         # to declare the subcommand ok
-        sarr = re.split('\.',args.subcommand)
+        sarr = re.split('\\.',args.subcommand)
         i = len(sarr)
         while i > 0:
             # to give the command line
